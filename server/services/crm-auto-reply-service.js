@@ -8,6 +8,11 @@ function isInbound(message) {
 }
 
 function buildPrompt({ chat, messages, snippets, settings }) {
+  const channel =
+    chat?.contact?.externalId &&
+    String(chat.contact.externalId).startsWith("tg:")
+      ? "Telegram"
+      : "WhatsApp";
   const knowledgeContext = snippets.length
     ? snippets
         .map(
@@ -26,7 +31,7 @@ function buildPrompt({ chat, messages, snippets, settings }) {
     .join("\n");
 
   return [
-    "You are a CRM assistant replying to a WhatsApp customer in Indonesian.",
+    `You are a CRM assistant replying to a ${channel} customer in Indonesian.`,
     `Persona and brand voice: ${settings.persona || "Ramah, jelas, profesional, dan membantu."}`,
     "Answer only using the provided knowledge snippets and conversation context.",
     "If the knowledge is insufficient, use the fallback message and do not invent details.",
@@ -43,6 +48,32 @@ function buildPrompt({ chat, messages, snippets, settings }) {
     "",
     "Write one concise customer-facing reply.",
   ].join("\n");
+}
+
+async function deliverOutgoingMessage({ userId, outgoing, sessionManager }) {
+  const message = outgoing?.message;
+  if (!message) return false;
+
+  if (message.sessionId) {
+    if (!sessionManager) {
+      throw new Error("Session manager is required to send WhatsApp messages.");
+    }
+
+    await sessionManager.sendMessage(message.sessionId, {
+      recipient: message.receiver,
+      body: message.body,
+    });
+    return true;
+  }
+
+  if (String(message.receiver || "").startsWith("tg:")) {
+    const TelegramService = require("./telegram-service");
+    const telegramId = TelegramService.extractTelegramId(message.receiver);
+    if (!telegramId) return false;
+    return TelegramService.sendMessage(userId, telegramId, message.body || "");
+  }
+
+  return false;
 }
 
 async function generateDraft(userId, chatId) {
@@ -232,12 +263,13 @@ async function maybeAutoReply({
     io.to(userRoom(userId)).emit("contact_list_update", outgoing.chat);
   }
 
-  if (outgoing.message.sessionId) {
-    await sessionManager.sendMessage(outgoing.message.sessionId, {
-      recipient: outgoing.message.receiver,
-      body: outgoing.message.body,
-    });
+  const delivered = await deliverOutgoingMessage({
+    userId,
+    outgoing,
+    sessionManager,
+  });
 
+  if (delivered) {
     await chatService.addMessageStatus(outgoing.message.id, "delivered");
     if (io && userRoom) {
       io.to(userRoom(userId)).emit("message_status_update", {

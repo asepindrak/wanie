@@ -14,6 +14,25 @@ function isAssistantExternalId(externalId) {
   );
 }
 
+async function deliverTelegramMessage(userId, message) {
+  if (!String(message?.receiver || "").startsWith("tg:")) return false;
+
+  const TelegramService = require("../services/telegram-service");
+  const telegramId = TelegramService.extractTelegramId(message.receiver);
+  if (!telegramId) return false;
+
+  if (message.mediaFileId) {
+    return TelegramService.sendMedia(
+      userId,
+      telegramId,
+      message.mediaFile,
+      message.body,
+    );
+  }
+
+  return TelegramService.sendMessage(userId, telegramId, message.body || "");
+}
+
 function registerSocketHandlers({ io, config, sessionManager }) {
   io.use(async (socket, next) => {
     try {
@@ -87,6 +106,7 @@ function registerSocketHandlers({ io, config, sessionManager }) {
             result.chat,
           );
 
+          let delivered = false;
           if (result.message.sessionId) {
             await sessionManager.sendMessage(result.message.sessionId, {
               recipient: result.message.receiver,
@@ -94,7 +114,15 @@ function registerSocketHandlers({ io, config, sessionManager }) {
               mediaFileId: result.message.mediaFileId,
               mediaPath: result.message.mediaFile?.relativePath || null,
             });
+            delivered = true;
+          } else {
+            delivered = await deliverTelegramMessage(
+              socket.user.id,
+              result.message,
+            );
+          }
 
+          if (delivered) {
             await chatService.addMessageStatus(result.message.id, "delivered");
             io.to(userRoom(socket.user.id)).emit("message_status_update", {
               messageId: result.message.id,
@@ -155,12 +183,27 @@ function registerSocketHandlers({ io, config, sessionManager }) {
           result.chat,
         );
 
+        let delivered = false;
         if (result.message.sessionId) {
           await sessionManager.sendMessage(result.message.sessionId, {
             recipient: result.message.receiver,
             body: result.message.body,
             mediaFileId: result.message.mediaFileId,
             mediaPath: result.message.mediaFile?.relativePath || null,
+          });
+          delivered = true;
+        } else {
+          delivered = await deliverTelegramMessage(
+            socket.user.id,
+            result.message,
+          );
+        }
+
+        if (delivered) {
+          await chatService.addMessageStatus(result.message.id, "delivered");
+          io.to(userRoom(socket.user.id)).emit("message_status_update", {
+            messageId: result.message.id,
+            status: "delivered",
           });
         }
 

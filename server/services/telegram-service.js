@@ -10,6 +10,24 @@ const { mediaDir } = require("../utils/paths");
 let bots = {}; // userId -> Telegraf instance
 let ioInstance = null;
 
+function getTelegramDisplayName(ctx) {
+  return (
+    [ctx.from?.first_name, ctx.from?.last_name]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .join(" ") ||
+    ctx.from?.username ||
+    "Telegram User"
+  );
+}
+
+function isAdminChat(userId, telegramChatId) {
+  const allowedIds = (
+    TelegramConfigService.getConfig(userId)?.adminTelegramIds || []
+  ).map(String);
+  return allowedIds.length > 0 && allowedIds.includes(String(telegramChatId));
+}
+
 class TelegramService {
   static setIo(io) {
     ioInstance = io;
@@ -26,89 +44,110 @@ class TelegramService {
 
     bot.start((ctx) => {
       ctx.reply(
-        "Halo! Saya adalah OpenWA Assistant. Anda bisa meremote OpenWA melalui bot ini.",
+        "Halo! Pesan Anda sudah terhubung ke CRM. Tim kami akan membantu dari sini.",
       );
     });
 
     bot.on("text", async (ctx) => {
       const telegramChatId = String(ctx.chat.id);
-      const allowedIds = (
-        TelegramConfigService.getConfig(userId)?.adminTelegramIds || []
-      ).map(String);
       const text = ctx.message.text;
+      const normalizedText = String(text || "").trim();
 
-      if (allowedIds.length > 0 && !allowedIds.includes(telegramChatId)) {
-        await ctx.reply(
-          "Maaf, akun Telegram Anda belum diizinkan untuk mengontrol OpenWA. Hubungi pemilik untuk menambahkan chat ID Anda.",
-        );
-        return;
-      }
-
-      // Find or create a contact for this Telegram chat
-      let contact = await prisma.contact.findFirst({
-        where: {
-          userId,
-          externalId: `tg:${telegramChatId}`,
-        },
-      });
-
-      if (!contact) {
-        contact = await prisma.contact.create({
-          data: {
+      if (isAdminChat(userId, telegramChatId)) {
+        // Admin chats keep the existing remote-assistant behavior.
+        let contact = await prisma.contact.findFirst({
+          where: {
             userId,
             externalId: `tg:${telegramChatId}`,
-            displayName: ctx.from.first_name || "Telegram User",
-            avatarUrl: null,
           },
         });
-      }
 
-      const normalizedText = String(text || "").trim();
-      if (normalizedText.toLowerCase() === "/new") {
-        const newChat = await chatService.createAssistantConversation(
-          userId,
-          {},
-        );
-        if (ioInstance) {
-          ioInstance.to(`user:${userId}`).emit("contact_list_update", newChat);
+        if (!contact) {
+          contact = await prisma.contact.create({
+            data: {
+              userId,
+              externalId: `tg:${telegramChatId}`,
+              displayName: getTelegramDisplayName(ctx),
+              avatarUrl: null,
+            },
+          });
         }
-        await ctx.reply(
-          "Konteks baru telah dimulai. Saya membuat sesi assistant baru untuk Anda.",
-        );
-        return;
-      }
 
-      // Find or create a chat linked to that contact
-      let chat = await prisma.chat.findFirst({
-        where: {
-          userId,
-          contactId: contact.id,
-        },
-      });
-
-      if (!chat) {
-        chat = await prisma.chat.create({
-          data: {
+        if (normalizedText.toLowerCase() === "/new") {
+          const newChat = await chatService.createAssistantConversation(
             userId,
-            title: contact.displayName,
+            {},
+          );
+          if (ioInstance) {
+            ioInstance.to(`user:${userId}`).emit("contact_list_update", newChat);
+          }
+          await ctx.reply(
+            "Konteks baru telah dimulai. Saya membuat sesi assistant baru untuk Anda.",
+          );
+          return;
+        }
+
+        let chat = await prisma.chat.findFirst({
+          where: {
+            userId,
             contactId: contact.id,
           },
         });
+
+        if (!chat) {
+          chat = await prisma.chat.create({
+            data: {
+              userId,
+              title: contact.displayName,
+              contactId: contact.id,
+            },
+          });
+        }
+
+        const agentService = require("./agent-service");
+        await agentService.handleAssistantMessage(
+          userId,
+          chat.id,
+          { body: text },
+          {
+            transport: "telegram",
+            telegramCtx: ctx,
+            io: ioInstance,
+          },
+        );
+        return;
       }
 
-      // Process message through AgentService
-      const agentService = require("./agent-service");
-      // We need to pass a context that includes a way to send back to Telegram
-      await agentService.handleAssistantMessage(
+      const incoming = await chatService.storeIncomingMessage({
         userId,
-        chat.id,
-        { body: text },
-        {
-          transport: "telegram",
-          telegramCtx: ctx,
+        sessionId: null,
+        sender: `tg:${telegramChatId}`,
+        displayName: getTelegramDisplayName(ctx),
+        body: normalizedText,
+        type: "text",
+        externalMessageId: `telegram:${telegramChatId}:${ctx.message.message_id}`,
+      });
+
+      if (ioInstance) {
+        ioInstance.to(`user:${userId}`).emit("new_message", incoming.message);
+        ioInstance.to(`user:${userId}`).emit(
+          "contact_list_update",
+          incoming.chat,
+        );
+      }
+
+      const crmAutoReplyService = require("./crm-auto-reply-service");
+      try {
+        await crmAutoReplyService.maybeAutoReply({
+          userId,
+          chat: incoming.chat,
+          inboundMessage: incoming.message,
           io: ioInstance,
-        },
-      );
+          userRoom: (id) => `user:${id}`,
+        });
+      } catch (error) {
+        console.error("[TelegramService] CRM auto-reply failed:", error);
+      }
     });
 
     bot.launch();
@@ -163,14 +202,17 @@ class TelegramService {
 
   static async sendMessage(userId, telegramChatId, text) {
     const bot = bots[userId];
-    if (bot) {
-      await bot.telegram.sendMessage(telegramChatId, text);
+    if (!bot) {
+      return false;
     }
+
+    await bot.telegram.sendMessage(telegramChatId, text);
+    return true;
   }
 
   static async sendMedia(userId, telegramChatId, mediaFile, caption) {
     const bot = bots[userId];
-    if (!bot || !mediaFile) return;
+    if (!bot || !mediaFile) return false;
 
     const relativePath = String(mediaFile.relativePath || "")
       .replace(/\\/g, "/")
@@ -221,6 +263,8 @@ class TelegramService {
         (caption ? caption + "\n" : "") + "[Media file missing]",
       );
     }
+
+    return true;
   }
 
   static isTelegramChat(externalId) {
