@@ -1,6 +1,6 @@
 {
   "name": "@adens/openwa",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "description": "Self-hosted WhatsApp workspace with multi-session management, REST API, JWT & API key authentication, real-time messaging via Socket.IO, media upload, Swagger documentation, and AI-agent integration support.",
   "license": "MIT",
   "author": "asepindrak <asepindrakurniawan@gmail.com>",
