@@ -3,6 +3,38 @@ const crmService = require("./crm-service");
 const knowledgeService = require("./knowledge-service");
 const llmService = require("./llm-service");
 
+const generationRetryDelaysMs = [0, 1000, 2500];
+const deliveryRetryDelaysMs = [0, 750, 1500];
+const autoReplyDebounceMs = 8000;
+const activeAutoReplyKeys = new Set();
+const pendingAutoReplyJobs = new Map();
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function retryOperation(operation, { delaysMs, onRetry }) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
+    const delayMs = delaysMs[attempt];
+    if (delayMs > 0) {
+      await sleep(delayMs);
+    }
+
+    try {
+      return await operation(attempt + 1);
+    } catch (error) {
+      lastError = error;
+      if (attempt < delaysMs.length - 1 && onRetry) {
+        await onRetry(error, attempt + 1);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 function isInbound(message) {
   return message?.direction === "inbound" || message?.direction === "incoming";
 }
@@ -76,6 +108,107 @@ async function deliverOutgoingMessage({ userId, outgoing, sessionManager }) {
   return false;
 }
 
+async function deliverOutgoingMessageWithRetry({
+  userId,
+  outgoing,
+  sessionManager,
+}) {
+  return retryOperation(
+    () =>
+      deliverOutgoingMessage({
+        userId,
+        outgoing,
+        sessionManager,
+      }).then((sent) => {
+        if (!sent) {
+          throw new Error("No active transport was available for delivery.");
+        }
+        return sent;
+      }),
+    {
+      delaysMs: deliveryRetryDelaysMs,
+      onRetry: (error, attempt) => {
+        console.warn(
+          `[CrmAutoReply] Delivery attempt ${attempt} failed for message ${outgoing.message.id}: ${error.message}`,
+        );
+      },
+    },
+  );
+}
+
+function formatWaitTime(seconds) {
+  const totalSeconds = Math.max(1, Math.round(Number(seconds) || 1));
+  if (totalSeconds < 60) {
+    return `${totalSeconds} detik`;
+  }
+
+  const minutes = Math.ceil(totalSeconds / 60);
+  return `${minutes} menit`;
+}
+
+function buildSkipNotice(reason, metadata = {}) {
+  if (reason === "processing") {
+    return "Pesan Anda sudah kami terima. Auto-reply masih memproses pesan sebelumnya, jadi pesan ini tidak diproses ulang oleh AI. Mohon tunggu sebentar.";
+  }
+
+  if (reason === "daily-limit") {
+    return "Pesan Anda sudah kami terima. Untuk sementara auto-reply dibatasi karena batas respons harian chat ini sudah tercapai. Admin akan membantu menindaklanjuti.";
+  }
+
+  if (reason === "abuse-rate-limit") {
+    const waitTime = formatWaitTime(
+      metadata.retryAfterSeconds || metadata.cooldownSeconds || 180,
+    );
+    return `Pesan Anda sudah kami terima, tapi terlalu banyak pesan masuk dalam waktu singkat. Auto-reply dijeda sekitar ${waitTime}. Mohon kirim pertanyaan berikutnya dalam satu pesan agar bisa kami bantu lebih akurat.`;
+  }
+
+  if (reason === "abuse-cooldown") {
+    const waitTime = formatWaitTime(
+      metadata.retryAfterSeconds || metadata.cooldownSeconds || 180,
+    );
+    return `Pesan Anda sudah kami terima. Auto-reply masih dijeda sementara karena terlalu banyak pesan sebelumnya. Mohon tunggu sekitar ${waitTime}.`;
+  }
+
+  return "Pesan Anda sudah kami terima. Auto-reply sedang dijeda sementara, admin akan membantu menindaklanjuti.";
+}
+
+async function createAndDeliverSystemNotice({
+  userId,
+  chatId,
+  body,
+  io,
+  sessionManager,
+  userRoom,
+}) {
+  const outgoing = await chatService.createOutgoingMessage({
+    userId,
+    chatId,
+    body,
+    type: "text",
+  });
+
+  if (io && userRoom) {
+    io.to(userRoom(userId)).emit("new_message", outgoing.message);
+    io.to(userRoom(userId)).emit("contact_list_update", outgoing.chat);
+  }
+
+  await deliverOutgoingMessageWithRetry({
+    userId,
+    outgoing,
+    sessionManager,
+  });
+
+  await chatService.addMessageStatus(outgoing.message.id, "delivered");
+  if (io && userRoom) {
+    io.to(userRoom(userId)).emit("message_status_update", {
+      messageId: outgoing.message.id,
+      status: "delivered",
+    });
+  }
+
+  return outgoing;
+}
+
 async function generateDraft(userId, chatId) {
   const chat = await chatService.getChatWithContact(userId, chatId);
   if (!chat) throw new Error("Chat not found.");
@@ -91,7 +224,14 @@ async function generateDraft(userId, chatId) {
     throw new Error("No inbound customer message found for this chat.");
   }
 
-  const snippets = await knowledgeService.searchChunks(userId, lastInbound.body, {
+  const knowledgeQuery =
+    messages
+      .filter((message) => isInbound(message) && message.body)
+      .slice(-4)
+      .map((message) => message.body)
+      .join("\n") || lastInbound.body;
+
+  const snippets = await knowledgeService.searchChunks(userId, knowledgeQuery, {
     limit: settings.maxChunks,
   });
   const result = await llmService.generate(userId, {
@@ -107,6 +247,17 @@ async function generateDraft(userId, chatId) {
     draft: String(result?.text || settings.fallbackMessage).trim(),
     sources: snippets,
   };
+}
+
+async function generateDraftWithRetry(userId, chatId) {
+  return retryOperation(() => generateDraft(userId, chatId), {
+    delaysMs: generationRetryDelaysMs,
+    onRetry: (error, attempt) => {
+      console.warn(
+        `[CrmAutoReply] Draft generation attempt ${attempt} failed: ${error.message}`,
+      );
+    },
+  });
 }
 
 async function testKnowledgeChat(userId, question) {
@@ -171,7 +322,7 @@ async function maybeAutoReply({
   const mode = await crmService.resolveModeForChat(userId, chat);
   if (mode === "draft") {
     try {
-      const result = await generateDraft(userId, chat.id);
+      const result = await generateDraftWithRetry(userId, chat.id);
       await crmService.createAutomationLog(userId, {
         chatId: chat.id,
         mode,
@@ -212,31 +363,165 @@ async function maybeAutoReply({
     return { skipped: true, mode };
   }
 
+  const activeKey = `${userId}:${chat.id}`;
+  scheduleAutoReply(activeKey, {
+    userId,
+    chat,
+    inboundMessage,
+    io,
+    sessionManager,
+    userRoom,
+    settings,
+    mode,
+  });
+
+  return {
+    queued: true,
+    mode,
+    debounceMs: autoReplyDebounceMs,
+  };
+}
+
+function scheduleAutoReply(activeKey, job) {
+  const existing = pendingAutoReplyJobs.get(activeKey);
+  if (existing?.timer) {
+    clearTimeout(existing.timer);
+  }
+
+  const nextJob = {
+    ...job,
+    timer: setTimeout(() => {
+      processScheduledAutoReply(activeKey).catch((error) => {
+        console.error("[CrmAutoReply] Scheduled auto-reply failed:", error);
+      });
+    }, autoReplyDebounceMs),
+  };
+
+  pendingAutoReplyJobs.set(activeKey, nextJob);
+}
+
+async function processScheduledAutoReply(activeKey) {
+  const job = pendingAutoReplyJobs.get(activeKey);
+  if (!job) return null;
+
+  pendingAutoReplyJobs.delete(activeKey);
+
+  if (activeAutoReplyKeys.has(activeKey)) {
+    pendingAutoReplyJobs.set(activeKey, {
+      ...job,
+      timer: setTimeout(() => {
+        processScheduledAutoReply(activeKey).catch((error) => {
+          console.error("[CrmAutoReply] Scheduled auto-reply failed:", error);
+        });
+      }, 2000),
+    });
+    return { queued: true, reason: "active-reply-in-progress" };
+  }
+
+  activeAutoReplyKeys.add(activeKey);
+  try {
+    return await runAutoReply(job);
+  } finally {
+    activeAutoReplyKeys.delete(activeKey);
+  }
+}
+
+async function runAutoReply({
+  userId,
+  chat,
+  inboundMessage,
+  io,
+  sessionManager,
+  userRoom,
+  settings,
+  mode,
+}) {
   const guard = await crmService.getAutoReplyGuard(userId, chat.id, settings);
   if (!guard.allowed) {
+    let notice = null;
+    const noticeBody = buildSkipNotice(guard.reason, guard.metadata);
+    try {
+      notice = await createAndDeliverSystemNotice({
+        userId,
+        chatId: chat.id,
+        body: noticeBody,
+        io,
+        sessionManager,
+        userRoom,
+      });
+    } catch (error) {
+      await crmService.createAutomationLog(userId, {
+        chatId: chat.id,
+        mode,
+        action: "error",
+        reason: error.message,
+        inboundMessageId: inboundMessage?.id,
+        metadata: {
+          ...(guard.metadata || {}),
+          originalReason: guard.reason,
+          stage: "skip-notice-deliver",
+        },
+      });
+      throw error;
+    }
+
     await crmService.createAutomationLog(userId, {
       chatId: chat.id,
       mode,
-      action: "skipped",
+      action: "skipped_notice_sent",
       reason: guard.reason,
       inboundMessageId: inboundMessage?.id,
-      metadata: guard.metadata,
+      outboundMessageId: notice?.message?.id,
+      draft: noticeBody,
+      metadata: {
+        ...(guard.metadata || {}),
+        aiSkipped: true,
+      },
     });
-    return { skipped: true, mode, reason: guard.reason };
+
+    if (io && userRoom) {
+      io.to(userRoom(userId)).emit("crm_activity_update", {
+        chatId: chat.id,
+        action: "skipped_notice_sent",
+      });
+    }
+
+    return {
+      skipped: true,
+      mode,
+      reason: guard.reason,
+      message: notice?.message || null,
+    };
   }
 
   let result;
   try {
-    result = await generateDraft(userId, chat.id);
+    result = await generateDraftWithRetry(userId, chat.id);
   } catch (error) {
+    const fallbackDraft = String(settings.fallbackMessage || "").trim();
     await crmService.createAutomationLog(userId, {
       chatId: chat.id,
       mode,
       action: "error",
       reason: error.message,
       inboundMessageId: inboundMessage?.id,
+      draft: fallbackDraft || null,
+      metadata: {
+        stage: "generate",
+        retryAttempts: generationRetryDelaysMs.length,
+        fallbackSent: Boolean(fallbackDraft),
+      },
     });
-    throw error;
+
+    if (!fallbackDraft) {
+      throw error;
+    }
+
+    result = {
+      draft: fallbackDraft,
+      sources: [],
+      fallbackReason: error.message,
+    };
   }
 
   if (!result.draft) {
@@ -263,11 +548,30 @@ async function maybeAutoReply({
     io.to(userRoom(userId)).emit("contact_list_update", outgoing.chat);
   }
 
-  const delivered = await deliverOutgoingMessage({
-    userId,
-    outgoing,
-    sessionManager,
-  });
+  let delivered = false;
+  try {
+    delivered = await deliverOutgoingMessageWithRetry({
+      userId,
+      outgoing,
+      sessionManager,
+    });
+  } catch (error) {
+    await crmService.createAutomationLog(userId, {
+      chatId: chat.id,
+      mode,
+      action: "error",
+      reason: error.message,
+      inboundMessageId: inboundMessage?.id,
+      outboundMessageId: outgoing.message.id,
+      draft: result.draft,
+      sources: result.sources || [],
+      metadata: {
+        stage: "deliver",
+        retryAttempts: deliveryRetryDelaysMs.length,
+      },
+    });
+    throw error;
+  }
 
   if (delivered) {
     await chatService.addMessageStatus(outgoing.message.id, "delivered");
@@ -287,6 +591,12 @@ async function maybeAutoReply({
     outboundMessageId: outgoing.message.id,
     draft: result.draft,
     sources: result.sources || [],
+    metadata: result.fallbackReason
+      ? {
+          fallbackReason: result.fallbackReason,
+          retryAttempts: generationRetryDelaysMs.length,
+        }
+      : undefined,
   });
 
   if (io && userRoom) {

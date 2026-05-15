@@ -264,7 +264,7 @@ model CrmAiSetting {
   embeddingModel              String?
   similarityThreshold         Float    @default(0.72)
   maxChunks                   Int      @default(6)
-  cooldownSeconds             Int      @default(90)
+  cooldownSeconds             Int      @default(180)
   maxAutoRepliesPerChatPerDay Int      @default(20)
   persona                     String?
   fallbackMessage             String   @default("Terima kasih, pesan Anda akan dibantu admin kami.")

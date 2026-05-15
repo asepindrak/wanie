@@ -9,12 +9,15 @@ const defaultSettings = {
   embeddingModel: null,
   similarityThreshold: 0.72,
   maxChunks: 6,
-  cooldownSeconds: 90,
+  cooldownSeconds: 180,
   maxAutoRepliesPerChatPerDay: 20,
   persona:
     "Ramah, jelas, profesional, dan membantu. Gunakan Bahasa Indonesia natural.",
   fallbackMessage: "Terima kasih, pesan Anda akan dibantu admin kami.",
 };
+
+const abuseWindowSeconds = 60;
+const maxInboundMessagesPerAbuseWindow = 8;
 
 async function retryOnSqliteTimeout(operation) {
   let lastError = null;
@@ -301,39 +304,77 @@ async function listAutomationLogs(userId, { chatId, limit = 50 } = {}) {
 async function getAutoReplyGuard(userId, chatId, settings) {
   const now = Date.now();
   const cooldownMs = Math.max(0, Number(settings.cooldownSeconds) || 0) * 1000;
-  const cooldownSince = new Date(now - cooldownMs);
+  const abuseCooldownSince = new Date(now - cooldownMs);
+  const abuseWindowSince = new Date(now - abuseWindowSeconds * 1000);
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
 
-  const [recentAutoReply, repliesToday] = await retryOnSqliteTimeout(() =>
-    Promise.all([
-      cooldownMs
-        ? prisma.crmAutomationLog.findFirst({
-            where: {
-              userId,
-              chatId,
-              action: "auto_sent",
-              createdAt: { gte: cooldownSince },
-            },
-            orderBy: { createdAt: "desc" },
-          })
-        : Promise.resolve(null),
-      prisma.crmAutomationLog.count({
-        where: {
-          userId,
-          chatId,
-          action: "auto_sent",
-          createdAt: { gte: dayStart },
-        },
-      }),
-    ]),
-  );
+  const [recentAbuseNotice, inboundMessagesInWindow, repliesToday] =
+    await retryOnSqliteTimeout(() =>
+      Promise.all([
+        cooldownMs
+          ? prisma.crmAutomationLog.findFirst({
+              where: {
+                userId,
+                chatId,
+                action: "skipped_notice_sent",
+                reason: { in: ["abuse-rate-limit", "abuse-cooldown"] },
+                createdAt: { gte: abuseCooldownSince },
+              },
+              orderBy: { createdAt: "desc" },
+            })
+          : Promise.resolve(null),
+        prisma.message.count({
+          where: {
+            chatId,
+            direction: "inbound",
+            createdAt: { gte: abuseWindowSince },
+          },
+        }),
+        prisma.crmAutomationLog.count({
+          where: {
+            userId,
+            chatId,
+            action: "auto_sent",
+            createdAt: { gte: dayStart },
+          },
+        }),
+      ]),
+    );
 
-  if (recentAutoReply) {
+  if (recentAbuseNotice) {
+    const remainingSeconds = Math.max(
+      1,
+      Math.ceil(
+        (cooldownMs -
+          (Date.now() - new Date(recentAbuseNotice.createdAt).getTime())) /
+          1000,
+      ),
+    );
     return {
       allowed: false,
-      reason: "cooldown",
-      metadata: { cooldownSeconds: settings.cooldownSeconds },
+      reason: "abuse-cooldown",
+      metadata: {
+        cooldownSeconds: settings.cooldownSeconds,
+        retryAfterSeconds: remainingSeconds,
+        abuseWindowSeconds,
+        maxInboundMessagesPerAbuseWindow,
+        inboundMessagesInWindow,
+      },
+    };
+  }
+
+  if (inboundMessagesInWindow >= maxInboundMessagesPerAbuseWindow) {
+    return {
+      allowed: false,
+      reason: "abuse-rate-limit",
+      metadata: {
+        cooldownSeconds: settings.cooldownSeconds,
+        retryAfterSeconds: settings.cooldownSeconds,
+        abuseWindowSeconds,
+        maxInboundMessagesPerAbuseWindow,
+        inboundMessagesInWindow,
+      },
     };
   }
 

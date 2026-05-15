@@ -35,7 +35,7 @@ const defaultCrmSettings = {
   embeddingModel: "",
   similarityThreshold: 0.72,
   maxChunks: 6,
-  cooldownSeconds: 90,
+  cooldownSeconds: 180,
   maxAutoRepliesPerChatPerDay: 20,
   persona:
     "Ramah, jelas, profesional, dan membantu. Gunakan Bahasa Indonesia natural.",
@@ -1275,7 +1275,7 @@ export default function CrmPage() {
                     }
                   />
                   <label className="mt-3 block text-xs text-white/45">
-                    Auto-reply cooldown seconds
+                    Abuse cooldown seconds
                   </label>
                   <input
                     type="number"
@@ -1366,8 +1366,11 @@ export default function CrmPage() {
                     Safety guard
                   </div>
                   <p className="mt-2">
-                    Auto-reply is skipped during cooldown and after the daily
-                    limit is reached. Every skip or send is saved in Activity.
+                    Auto-reply waits a few seconds after the last customer
+                    message, then answers the combined context. Normal follow-up
+                    questions are still answered; cooldown only starts when a
+                    chat sends too many messages in one minute or reaches the
+                    daily limit.
                   </p>
                 </div>
 
