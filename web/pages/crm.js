@@ -381,16 +381,23 @@ export default function CrmPage() {
     setKnowledgeLoading(true);
     setError("");
     try {
+      const formData = new FormData();
       for (const file of files) {
-        const formData = new FormData();
-        formData.append("file", file);
-        const data = await apiFetch("/api/knowledge/documents", {
-          method: "POST",
-          token,
-          formData,
-        });
-        setKnowledgeDocs((current) => [data.document, ...current]);
+        formData.append("files", file);
       }
+      const data = await apiFetch("/api/knowledge/documents", {
+        method: "POST",
+        token,
+        formData,
+      });
+      const uploadedDocuments = data.documents || [];
+      const uploadedNames = new Set(
+        uploadedDocuments.map((doc) => doc.originalName).filter(Boolean),
+      );
+      setKnowledgeDocs((current) => [
+        ...uploadedDocuments,
+        ...current.filter((doc) => !uploadedNames.has(doc.originalName)),
+      ]);
     } catch (requestError) {
       setError(requestError.message);
       await loadCrmData();
@@ -911,9 +918,11 @@ export default function CrmPage() {
                     <MdDescription className="text-xl text-brand-200" />
                   </div>
                   <p className="mt-2 text-xs leading-5 text-white/45">
-                    Files are stored in SQLite-backed knowledge records. TXT and
-                    CSV extract immediately; PDF, DOCX, and XLSX use optional
-                    extractor packages when installed.
+                    Files are stored in SQLite-backed knowledge records. Upload
+                    multiple files at once; matching filenames automatically
+                    replace older knowledge records. TXT, MD, and CSV extract
+                    immediately; PDF, DOCX, and XLSX use optional extractor
+                    packages when installed.
                   </p>
 
                   <input
@@ -921,7 +930,7 @@ export default function CrmPage() {
                     type="file"
                     multiple
                     className="hidden"
-                    accept=".txt,.pdf,.docx,.xlsx,.csv"
+                    accept=".txt,.md,.markdown,.pdf,.docx,.xlsx,.csv"
                     onChange={handleFilesSelected}
                   />
                   <button

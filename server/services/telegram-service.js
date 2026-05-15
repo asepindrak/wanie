@@ -5,6 +5,7 @@ const { prisma } = require("../database/client");
 const toolCredentialService = require("./tool-credential-service");
 const TelegramConfigService = require("./telegram-config-service");
 const chatService = require("./chat-service");
+const crmService = require("./crm-service");
 const { mediaDir } = require("../utils/paths");
 
 let bots = {}; // userId -> Telegraf instance
@@ -26,6 +27,76 @@ function isAdminChat(userId, telegramChatId) {
     TelegramConfigService.getConfig(userId)?.adminTelegramIds || []
   ).map(String);
   return allowedIds.length > 0 && allowedIds.includes(String(telegramChatId));
+}
+
+async function ensureTelegramChat(userId, telegramChatId, displayName) {
+  let contact = await prisma.contact.findFirst({
+    where: {
+      userId,
+      externalId: `tg:${telegramChatId}`,
+    },
+  });
+
+  if (!contact) {
+    contact = await prisma.contact.create({
+      data: {
+        userId,
+        externalId: `tg:${telegramChatId}`,
+        displayName,
+        avatarUrl: null,
+      },
+    });
+  }
+
+  let chat = await prisma.chat.findFirst({
+    where: {
+      userId,
+      contactId: contact.id,
+    },
+    include: {
+      contact: true,
+    },
+  });
+
+  if (!chat) {
+    chat = await prisma.chat.create({
+      data: {
+        userId,
+        title: contact.displayName,
+        contactId: contact.id,
+      },
+      include: {
+        contact: true,
+      },
+    });
+  }
+
+  return chat;
+}
+
+async function storeTelegramIncomingMessage({
+  userId,
+  telegramChatId,
+  displayName,
+  normalizedText,
+  messageId,
+}) {
+  return chatService.storeIncomingMessage({
+    userId,
+    sessionId: null,
+    sender: `tg:${telegramChatId}`,
+    displayName,
+    body: normalizedText,
+    type: "text",
+    externalMessageId: `telegram:${telegramChatId}:${messageId}`,
+  });
+}
+
+function emitTelegramIncoming(incoming, userId) {
+  if (!ioInstance) return;
+
+  ioInstance.to(`user:${userId}`).emit("new_message", incoming.message);
+  ioInstance.to(`user:${userId}`).emit("contact_list_update", incoming.chat);
 }
 
 class TelegramService {
@@ -52,26 +123,15 @@ class TelegramService {
       const telegramChatId = String(ctx.chat.id);
       const text = ctx.message.text;
       const normalizedText = String(text || "").trim();
+      const displayName = getTelegramDisplayName(ctx);
 
       if (isAdminChat(userId, telegramChatId)) {
         // Admin chats keep the existing remote-assistant behavior.
-        let contact = await prisma.contact.findFirst({
-          where: {
-            userId,
-            externalId: `tg:${telegramChatId}`,
-          },
-        });
-
-        if (!contact) {
-          contact = await prisma.contact.create({
-            data: {
-              userId,
-              externalId: `tg:${telegramChatId}`,
-              displayName: getTelegramDisplayName(ctx),
-              avatarUrl: null,
-            },
-          });
-        }
+        const chat = await ensureTelegramChat(
+          userId,
+          telegramChatId,
+          displayName,
+        );
 
         if (normalizedText.toLowerCase() === "/new") {
           const newChat = await chatService.createAssistantConversation(
@@ -85,23 +145,6 @@ class TelegramService {
             "Konteks baru telah dimulai. Saya membuat sesi assistant baru untuk Anda.",
           );
           return;
-        }
-
-        let chat = await prisma.chat.findFirst({
-          where: {
-            userId,
-            contactId: contact.id,
-          },
-        });
-
-        if (!chat) {
-          chat = await prisma.chat.create({
-            data: {
-              userId,
-              title: contact.displayName,
-              contactId: contact.id,
-            },
-          });
         }
 
         const agentService = require("./agent-service");
@@ -118,23 +161,38 @@ class TelegramService {
         return;
       }
 
-      const incoming = await chatService.storeIncomingMessage({
+      const chat = await ensureTelegramChat(
         userId,
-        sessionId: null,
-        sender: `tg:${telegramChatId}`,
-        displayName: getTelegramDisplayName(ctx),
-        body: normalizedText,
-        type: "text",
-        externalMessageId: `telegram:${telegramChatId}:${ctx.message.message_id}`,
+        telegramChatId,
+        displayName,
+      );
+      const crmMode = await crmService.resolveModeForChat(userId, chat);
+
+      if (crmMode === "off") {
+        const incoming = await storeTelegramIncomingMessage({
+          userId,
+          telegramChatId,
+          displayName,
+          normalizedText,
+          messageId: ctx.message.message_id,
+        });
+
+        emitTelegramIncoming(incoming, userId);
+        await ctx.reply(
+          "Halo, pesan Anda sudah diterima. Saat ini layanan bot otomatis sedang nonaktif, admin akan membalas dari dashboard.",
+        );
+        return;
+      }
+
+      const incoming = await storeTelegramIncomingMessage({
+        userId,
+        telegramChatId,
+        displayName,
+        normalizedText,
+        messageId: ctx.message.message_id,
       });
 
-      if (ioInstance) {
-        ioInstance.to(`user:${userId}`).emit("new_message", incoming.message);
-        ioInstance.to(`user:${userId}`).emit(
-          "contact_list_update",
-          incoming.chat,
-        );
-      }
+      emitTelegramIncoming(incoming, userId);
 
       const crmAutoReplyService = require("./crm-auto-reply-service");
       try {

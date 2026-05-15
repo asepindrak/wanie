@@ -50,10 +50,10 @@ If you use OpenWA with WhatsApp, make sure your usage complies with the terms, p
 ## Telegram Bot Integration
 
 - Setup a Telegram bot using a BotFather token and connect it to OpenWA.
-- Restrict bot control to specific Telegram chat IDs with admin allowlist support.
+- Restrict bot control to specific Telegram chat IDs with admin allowlist support from **Settings → Telegram** or the assistant tool `configure_telegram_admins`.
 - Use `/new` from Telegram to start a fresh assistant chat context.
 - Monitor the bot status via the assistant tool `get_telegram_bot_status`.
-- Use the same bot as a CRM customer channel: Telegram chat IDs not listed in the admin allowlist are treated as customer conversations.
+- Use the same bot as a CRM customer channel: Telegram chat IDs not listed in the admin allowlist are treated as customer conversations and never receive remote assistant tool access.
 - Customer Telegram messages are stored as CRM chats and can receive AI draft or auto-reply responses grounded in the CRM knowledge base.
 
 ## CRM AI Workspace
@@ -68,6 +68,8 @@ OpenWA includes a CRM page for support teams that want AI-assisted replies groun
 
 Automation can be configured globally, overridden per WhatsApp session, and overridden per individual chat. Chat-level settings take priority over session settings, and session settings take priority over the global default.
 
+For Telegram bot chats, **Off** stores non-admin customer messages in the dashboard and replies with a short notice that automation is inactive. **Draft only** and **Auto send** route the Telegram conversation through the CRM knowledge-base workflow. Only Telegram chat IDs in the admin allowlist can use the regular OpenWA Assistant/AI agent flow.
+
 ### Knowledge base
 
 CRM replies are grounded in uploaded knowledge documents. Supported file types include:
@@ -81,6 +83,8 @@ CRM replies are grounded in uploaded knowledge documents. Supported file types i
 - XLSX
 
 CSV files are converted into row/column-labeled text so service data such as `Nama Layanan`, `Harga Dasar`, and `Durasi (mnt)` can be retrieved reliably. Existing documents can be reindexed from the CRM page after parser changes, embedding configuration changes, or updated source files.
+
+The CRM knowledge page supports multiple file uploads in one action. If an uploaded file has the same original filename as an existing knowledge document, OpenWA automatically replaces the old document and rebuilds its chunks from the new file.
 
 ### Auto-reply behavior
 
@@ -433,7 +437,7 @@ CRM settings include automation mode, persona, fallback message, knowledge retri
 ### Knowledge
 
 - `GET /api/knowledge/documents`
-- `POST /api/knowledge/documents`
+- `POST /api/knowledge/documents` accepts one `file` field or multiple `files` fields. Matching original filenames replace existing documents automatically.
 - `DELETE /api/knowledge/documents/{documentId}`
 - `POST /api/knowledge/documents/{documentId}/reindex`
 - `GET /api/knowledge/documents/{documentId}/chunks`

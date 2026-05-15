@@ -218,6 +218,9 @@ export function SettingsModal({
   const [modelsMap, setModelsMap] = useState({});
   const [registerAllowed, setRegisterAllowed] = useState(true);
   const [registerLoading, setRegisterLoading] = useState(false);
+  const [telegramAdminIds, setTelegramAdminIds] = useState("");
+  const [telegramConfigLoading, setTelegramConfigLoading] = useState(false);
+  const [telegramConfigSaving, setTelegramConfigSaving] = useState(false);
   const [resetPasswordValue, setResetPasswordValue] = useState("");
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
   const [resetAllLoading, setResetAllLoading] = useState(false);
@@ -266,6 +269,13 @@ export function SettingsModal({
     return String(Math.round(parsed * 10) / 10);
   }
 
+  function normalizeTelegramAdminIdsInput(value) {
+    return String(value || "")
+      .split(/[,;\s]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
   async function copyWebhookExample(kind, value) {
     await navigator.clipboard.writeText(value);
     setCopiedWebhookExample(kind);
@@ -312,6 +322,52 @@ export function SettingsModal({
       mounted = false;
     };
   }, [open, token]);
+
+  useEffect(() => {
+    if (!open || !token) return;
+    let mounted = true;
+    (async () => {
+      setTelegramConfigLoading(true);
+      try {
+        const data = await apiFetch("/api/telegram/config", { token });
+        if (!mounted) return;
+        const ids = data.config?.adminTelegramIds || [];
+        setTelegramAdminIds(ids.join("\n"));
+      } catch (e) {
+        if (!mounted) return;
+        setTelegramAdminIds("");
+      } finally {
+        if (mounted) setTelegramConfigLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [open, token]);
+
+  const handleSaveTelegramConfig = async (e) => {
+    e.preventDefault();
+    if (!token) return;
+
+    const adminTelegramIds = normalizeTelegramAdminIdsInput(telegramAdminIds);
+    setTelegramConfigSaving(true);
+    try {
+      const data = await apiFetch("/api/telegram/config", {
+        method: "POST",
+        token,
+        body: { adminTelegramIds },
+      });
+      setTelegramAdminIds(
+        (data.config?.adminTelegramIds || adminTelegramIds).join("\n"),
+      );
+      alert("Telegram admin IDs saved.");
+    } catch (err) {
+      alert(err.message || "Failed to save Telegram admin IDs");
+    } finally {
+      setTelegramConfigSaving(false);
+    }
+  };
 
   const handleCreateProvider = async (e) => {
     e.preventDefault();
@@ -756,6 +812,18 @@ export function SettingsModal({
                 <button
                   type="button"
                   className={`rounded-2xl px-4 py-2 text-sm ${
+                    activeTab === "telegram"
+                      ? "bg-white/5 text-white"
+                      : "bg-transparent text-white/60 hover:bg-white/[0.04]"
+                  }`}
+                  onClick={() => setActiveTab("telegram")}
+                >
+                  Telegram
+                </button>
+
+                <button
+                  type="button"
+                  className={`rounded-2xl px-4 py-2 text-sm ${
                     activeTab === "ai"
                       ? "bg-white/5 text-white"
                       : "bg-transparent text-white/60 hover:bg-white/[0.04]"
@@ -1083,6 +1151,53 @@ export function SettingsModal({
                       </pre>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {activeTab === "telegram" && (
+                <div className="rounded-[28px] bg-[#161717] p-4">
+                  <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
+                    Telegram Bot
+                  </p>
+                  <h3 className="mt-2 text-base font-semibold text-white">
+                    Admin allowlist
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-white/45">
+                    Telegram chat IDs in this list can use the bot as the
+                    OpenWA assistant admin. Other Telegram users follow CRM mode;
+                    when CRM is off their messages are saved to the dashboard
+                    without assistant tool access.
+                  </p>
+
+                  <form
+                    className="mt-4 space-y-3"
+                    onSubmit={handleSaveTelegramConfig}
+                  >
+                    <textarea
+                      className="min-h-40 w-full resize-y rounded-[22px] bg-[#2e2f2f] px-4 py-3 font-mono text-sm text-white outline-none placeholder:text-white/30"
+                      placeholder={"123456789\n987654321"}
+                      value={telegramAdminIds}
+                      onChange={(e) => setTelegramAdminIds(e.target.value)}
+                      disabled={telegramConfigLoading}
+                    />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="submit"
+                        className="rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-[#10251a]"
+                        disabled={telegramConfigLoading || telegramConfigSaving}
+                      >
+                        {telegramConfigSaving
+                          ? "Saving..."
+                          : telegramConfigLoading
+                            ? "Loading..."
+                            : "Save Telegram admins"}
+                      </button>
+                      <p className="text-xs leading-5 text-white/40">
+                        Use one ID per line, or separate IDs with comma, space,
+                        or semicolon.
+                      </p>
+                    </div>
+                  </form>
                 </div>
               )}
 

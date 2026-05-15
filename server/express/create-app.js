@@ -28,6 +28,7 @@ const userSettings = require("../services/user-settings");
 const crmService = require("../services/crm-service");
 const crmAutoReplyService = require("../services/crm-auto-reply-service");
 const knowledgeService = require("../services/knowledge-service");
+const TelegramConfigService = require("../services/telegram-config-service");
 const TelegramService = require("../services/telegram-service");
 const { prisma } = require("../database/client");
 const {
@@ -92,6 +93,17 @@ function createUploader() {
   });
 
   return multer({ storage });
+}
+
+function normalizeTelegramAdminIds(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+
+  return String(value || "")
+    .split(/[,;\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function createKnowledgeUploader() {
@@ -569,6 +581,41 @@ function createApp({ config, sessionManager }) {
     }),
   );
 
+  app.get(
+    "/api/telegram/config",
+    requireDashboardAuth,
+    withAsync(async (req, res) => {
+      const config = TelegramConfigService.getConfig(req.user.id) || {};
+      res.json({
+        config: {
+          adminTelegramIds: Array.isArray(config.adminTelegramIds)
+            ? config.adminTelegramIds.map((item) => String(item))
+            : [],
+        },
+      });
+    }),
+  );
+
+  app.post(
+    "/api/telegram/config",
+    requireDashboardAuth,
+    withAsync(async (req, res) => {
+      const adminTelegramIds = normalizeTelegramAdminIds(
+        req.body?.adminTelegramIds,
+      );
+      const config = TelegramConfigService.saveConfig(req.user.id, {
+        adminTelegramIds,
+      });
+
+      res.json({
+        ok: true,
+        config: {
+          adminTelegramIds: config.adminTelegramIds,
+        },
+      });
+    }),
+  );
+
   // AI Provider management (dashboard-only)
   app.get(
     "/api/ai-providers",
@@ -1015,13 +1062,27 @@ function createApp({ config, sessionManager }) {
   app.post(
     "/api/knowledge/documents",
     requireAuth,
-    knowledgeUpload.single("file"),
+    knowledgeUpload.fields([
+      { name: "file", maxCount: 50 },
+      { name: "files", maxCount: 50 },
+    ]),
     withAsync(async (req, res) => {
-      const document = await knowledgeService.createDocumentFromUpload(
+      const files = [
+        ...(req.files?.file || []),
+        ...(req.files?.files || []),
+      ];
+      if (!files.length) {
+        return res.status(400).json({ error: "file is required." });
+      }
+
+      const documents = await knowledgeService.createDocumentsFromUploads(
         req.user.id,
-        req.file,
+        files,
       );
-      res.status(201).json({ document });
+      res.status(201).json({
+        document: documents[0] || null,
+        documents,
+      });
     }, 400),
   );
 

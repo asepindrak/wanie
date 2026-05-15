@@ -67,6 +67,7 @@ This document lists all features available in OpenWA, extracted from the API spe
 
 - Dedicated CRM dashboard for customer support workflows
 - Global CRM automation mode: off, draft only, or auto send
+- Telegram CRM off mode stores non-admin messages in the dashboard and sends an inactive automation notice
 - Per-chat automation mode overrides
 - Per-session automation mode overrides for WhatsApp sessions
 - AI draft generation from recent conversation context
@@ -87,7 +88,8 @@ This document lists all features available in OpenWA, extracted from the API spe
 
 ## CRM Knowledge Base
 
-- Upload knowledge documents from the CRM page
+- Upload one or multiple knowledge documents from the CRM page
+- Auto-replace existing knowledge documents when the uploaded original filename matches
 - Supported plain-text knowledge files: TXT, Markdown, CSV, and JSON
 - Supported office files: PDF, DOCX, and XLSX
 - CSV knowledge extraction with row/column labels for easier AI retrieval
@@ -103,9 +105,11 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Telegram bot can receive customer messages as CRM chats
 - Telegram customer messages are stored in the same chat/message database
 - Telegram CRM chats support AI draft and auto-reply modes
+- Telegram chats with CRM mode off are stored in the dashboard without giving non-admin users assistant tool access
 - Outbound CRM messages can be delivered back to Telegram
 - Admin Telegram chat IDs remain reserved for remote OpenWA assistant control
-- Non-admin Telegram chat IDs are treated as customer CRM conversations
+- Admin Telegram chat ID allowlist can be managed from Settings
+- Non-admin Telegram chat IDs are treated as customer conversations and cannot use the remote assistant tools
 
 ## Media
 

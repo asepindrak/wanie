@@ -426,6 +426,8 @@ async function searchChunks(userId, query, options = {}) {
 async function createDocumentFromUpload(userId, file) {
   if (!file) throw new Error("File is required.");
 
+  await replaceExistingDocumentByOriginalName(userId, file.originalname);
+
   const relativePath = path.relative(knowledgeDir, file.path);
   const document = await retryOnSqliteTimeout(() =>
     prisma.knowledgeDocument.create({
@@ -510,6 +512,82 @@ async function createDocumentFromUpload(userId, file) {
     }),
   );
   return sanitizeDocument(updated);
+}
+
+async function replaceExistingDocumentByOriginalName(userId, originalName) {
+  const normalizedName = sanitizeUnicodeText(originalName);
+  if (!normalizedName) return [];
+
+  const documents = await retryOnSqliteTimeout(() =>
+    prisma.knowledgeDocument.findMany({
+      where: {
+        userId,
+        originalName: normalizedName,
+      },
+    }),
+  );
+
+  if (!documents.length) return [];
+
+  await retryOnSqliteTimeout(() =>
+    prisma.$transaction([
+      prisma.knowledgeChunk.deleteMany({
+        where: {
+          userId,
+          documentId: {
+            in: documents.map((document) => document.id),
+          },
+        },
+      }),
+      prisma.knowledgeDocument.deleteMany({
+        where: {
+          userId,
+          id: {
+            in: documents.map((document) => document.id),
+          },
+        },
+      }),
+    ]),
+  );
+
+  const knowledgeRoot = path.resolve(knowledgeDir);
+  for (const document of documents) {
+    const filePath = path.resolve(knowledgeDir, document.relativePath || "");
+    if (
+      filePath.startsWith(`${knowledgeRoot}${path.sep}`) &&
+      fs.existsSync(filePath)
+    ) {
+      fs.rmSync(filePath, { force: true });
+    }
+  }
+
+  return documents.map(sanitizeDocument);
+}
+
+async function createDocumentsFromUploads(userId, files = []) {
+  const documents = [];
+  const latestFileByOriginalName = new Map();
+
+  for (const file of files) {
+    const key = sanitizeUnicodeText(file?.originalname);
+    if (!key) continue;
+
+    const previous = latestFileByOriginalName.get(key);
+    if (
+      previous?.path &&
+      previous.path !== file.path &&
+      fs.existsSync(previous.path)
+    ) {
+      fs.rmSync(previous.path, { force: true });
+    }
+    latestFileByOriginalName.set(key, file);
+  }
+
+  for (const file of latestFileByOriginalName.values()) {
+    documents.push(await createDocumentFromUpload(userId, file));
+  }
+
+  return documents;
 }
 
 async function indexDocumentFromStoredFile(userId, document) {
@@ -631,6 +709,7 @@ module.exports = {
   listDocuments,
   getDocumentChunks,
   createDocumentFromUpload,
+  createDocumentsFromUploads,
   deleteDocument,
   reindexDocument,
   searchChunks,
