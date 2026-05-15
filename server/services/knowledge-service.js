@@ -48,8 +48,38 @@ function sanitizeDocument(record) {
   };
 }
 
+function sanitizeUnicodeText(value) {
+  const input = String(value || "");
+  let output = "";
+
+  for (let index = 0; index < input.length; index += 1) {
+    const code = input.charCodeAt(index);
+
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = input.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        output += input[index] + input[index + 1];
+        index += 1;
+      }
+      continue;
+    }
+
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      continue;
+    }
+
+    if (code === 0) {
+      continue;
+    }
+
+    output += input[index];
+  }
+
+  return output;
+}
+
 function normalizeText(text) {
-  return String(text || "")
+  return sanitizeUnicodeText(text)
     .replace(/\r\n/g, "\n")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
@@ -78,7 +108,7 @@ function chunkText(text, { size = 1200, overlap = 200 } = {}) {
       }
     }
 
-    const content = slice.trim();
+    const content = normalizeText(slice);
     if (content) chunks.push(content);
 
     const nextIndex = index + Math.max(content.length - overlap, 1);
@@ -320,9 +350,9 @@ async function createDocumentFromUpload(userId, file) {
     prisma.knowledgeDocument.create({
       data: {
         userId,
-        title: file.originalname,
-        fileName: file.filename,
-        originalName: file.originalname,
+        title: sanitizeUnicodeText(file.originalname),
+        fileName: sanitizeUnicodeText(file.filename),
+        originalName: sanitizeUnicodeText(file.originalname),
         mimeType: file.mimetype || "application/octet-stream",
         size: file.size || 0,
         relativePath,
@@ -364,7 +394,7 @@ async function createDocumentFromUpload(userId, file) {
               chunkIndex,
               tokenCount: Math.ceil(content.length / 4),
               metadata: {
-                fileName: file.originalname,
+                fileName: sanitizeUnicodeText(file.originalname),
                 mimeType: file.mimetype || null,
               },
             })),
