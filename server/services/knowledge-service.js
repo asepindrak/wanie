@@ -7,6 +7,8 @@ const embeddingService = require("./embedding-service");
 
 const supportedPlainTextTypes = new Set([
   "text/plain",
+  "text/markdown",
+  "text/x-markdown",
   "text/csv",
   "application/csv",
   "application/json",
@@ -89,6 +91,7 @@ function normalizeText(text) {
 function chunkText(text, { size = 1200, overlap = 200 } = {}) {
   const normalized = normalizeText(text);
   if (!normalized) return [];
+  if (normalized.length <= size) return [normalized];
 
   const chunks = [];
   let index = 0;
@@ -111,12 +114,54 @@ function chunkText(text, { size = 1200, overlap = 200 } = {}) {
     const content = normalizeText(slice);
     if (content) chunks.push(content);
 
-    const nextIndex = index + Math.max(content.length - overlap, 1);
+    if (end >= normalized.length) break;
+
+    const step = Math.max(content.length - overlap, Math.floor(size * 0.5), 1);
+    const nextIndex = index + step;
     if (nextIndex <= index) break;
     index = nextIndex;
   }
 
   return chunks;
+}
+
+function formatCsvCell(value) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function readCsvAsText(filePath) {
+  const xlsx = require("xlsx");
+  const workbook = xlsx.readFile(filePath, { raw: false });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rows = xlsx.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: "",
+    raw: false,
+  });
+
+  if (!rows.length) return "";
+
+  const headers = rows[0].map(formatCsvCell);
+  const dataRows = rows.slice(1).filter((row) =>
+    row.some((cell) => formatCsvCell(cell)),
+  );
+
+  return dataRows
+    .map((row, rowIndex) => {
+      const fields = headers
+        .map((header, index) => {
+          const key = header || `Kolom ${index + 1}`;
+          const value = formatCsvCell(row[index]);
+          return value ? `${key}: ${value}` : null;
+        })
+        .filter(Boolean);
+
+      return `Baris ${rowIndex + 1}\n${fields.join("\n")}`;
+    })
+    .join("\n\n");
 }
 
 function tokenize(text) {
@@ -135,6 +180,33 @@ function scoreChunk(queryTerms, content) {
     if (haystack.includes(term)) score += 1;
   }
   return score / queryTerms.length;
+}
+
+function isCsvDocument(document) {
+  const mimeType = String(document?.mimeType || "").toLowerCase();
+  const name = String(document?.originalName || document?.fileName || "")
+    .toLowerCase()
+    .trim();
+  return mimeType.includes("csv") || name.endsWith(".csv");
+}
+
+function shouldPreferCsv(queryTerms) {
+  const csvIntentTerms = new Set([
+    "booking",
+    "cleaning",
+    "harga",
+    "layanan",
+    "order",
+    "pesan",
+    "berapa",
+    "biaya",
+    "durasi",
+    "kamar",
+    "mandi",
+    "dapur",
+    "rumah",
+  ]);
+  return queryTerms.some((term) => csvIntentTerms.has(term));
 }
 
 function readPlainText(filePath) {
@@ -169,9 +241,13 @@ async function extractText(file) {
     .trim();
   const mimeType = String(file.mimetype || "").toLowerCase();
 
+  if (ext === ".csv" || mimeType === "text/csv" || mimeType === "application/csv") {
+    return readCsvAsText(file.path);
+  }
+
   if (
     supportedPlainTextTypes.has(mimeType) ||
-    [".txt", ".csv", ".json", ".md"].includes(ext)
+    [".txt", ".json", ".md"].includes(ext)
   ) {
     return readPlainText(file.path);
   }
@@ -313,17 +389,22 @@ async function searchChunks(userId, query, options = {}) {
     if (vectorResults.length) return vectorResults;
   }
 
+  const preferCsv = shouldPreferCsv(queryTerms);
   const keywordResults = chunks
-    .map((chunk) => ({
-      id: chunk.id,
-      documentId: chunk.documentId,
-      documentTitle: chunk.document.title,
-      fileName: chunk.document.originalName,
-      content: chunk.content,
-      chunkIndex: chunk.chunkIndex,
-      score: scoreChunk(queryTerms, chunk.content),
-      searchMode: "keyword",
-    }))
+    .map((chunk) => {
+      const baseScore = scoreChunk(queryTerms, chunk.content);
+      const csvBoost = preferCsv && isCsvDocument(chunk.document) ? 0.35 : 0;
+      return {
+        id: chunk.id,
+        documentId: chunk.documentId,
+        documentTitle: chunk.document.title,
+        fileName: chunk.document.originalName,
+        content: chunk.content,
+        chunkIndex: chunk.chunkIndex,
+        score: baseScore + csvBoost,
+        searchMode: csvBoost ? "keyword+csv-priority" : "keyword",
+      };
+    })
     .filter((item) => item.score > 0)
     .sort((left, right) => right.score - left.score)
     .slice(0, take);
@@ -431,6 +512,82 @@ async function createDocumentFromUpload(userId, file) {
   return sanitizeDocument(updated);
 }
 
+async function indexDocumentFromStoredFile(userId, document) {
+  const filePath = path.resolve(knowledgeDir, document.relativePath || "");
+  const knowledgeRoot = path.resolve(knowledgeDir);
+  if (
+    !filePath.startsWith(`${knowledgeRoot}${path.sep}`) ||
+    !fs.existsSync(filePath)
+  ) {
+    throw new Error("Stored knowledge file is missing.");
+  }
+
+  const file = {
+    path: filePath,
+    filename: document.fileName,
+    originalname: document.originalName || document.fileName,
+    mimetype: document.mimeType || "application/octet-stream",
+    size: document.size || 0,
+  };
+
+  const text = normalizeText(await extractText(file));
+  const chunks = chunkText(text);
+  if (!chunks.length) {
+    await retryOnSqliteTimeout(() =>
+      prisma.$transaction([
+        prisma.knowledgeChunk.deleteMany({
+          where: { userId, documentId: document.id },
+        }),
+        prisma.knowledgeDocument.update({
+          where: { id: document.id },
+          data: {
+            status: "failed",
+            error: "No extractable text found.",
+            textLength: text.length,
+          },
+        }),
+      ]),
+    );
+    return;
+  }
+
+  const settings = await crmService.getSettings(userId);
+  const embeddedChunks = await embeddingService
+    .embedTexts(userId, chunks, { settings })
+    .catch(() => []);
+
+  await retryOnSqliteTimeout(() =>
+    prisma.$transaction([
+      prisma.knowledgeChunk.deleteMany({
+        where: { userId, documentId: document.id },
+      }),
+      prisma.knowledgeChunk.createMany({
+        data: chunks.map((content, chunkIndex) => ({
+          userId,
+          documentId: document.id,
+          content,
+          embedding: embeddedChunks[chunkIndex]?.embedding || undefined,
+          embeddingModel: embeddedChunks[chunkIndex]?.model || null,
+          chunkIndex,
+          tokenCount: Math.ceil(content.length / 4),
+          metadata: {
+            fileName: sanitizeUnicodeText(document.originalName || document.fileName),
+            mimeType: document.mimeType || null,
+          },
+        })),
+      }),
+      prisma.knowledgeDocument.update({
+        where: { id: document.id },
+        data: {
+          status: "ready",
+          error: null,
+          textLength: text.length,
+        },
+      }),
+    ]),
+  );
+}
+
 async function deleteDocument(userId, documentId) {
   const document = await retryOnSqliteTimeout(() =>
     prisma.knowledgeDocument.findFirst({ where: { id: documentId, userId } }),
@@ -459,37 +616,7 @@ async function reindexDocument(userId, documentId) {
   );
   if (!document) throw new Error("Knowledge document not found.");
 
-  const chunks = await retryOnSqliteTimeout(() =>
-    prisma.knowledgeChunk.findMany({
-      where: { userId, documentId },
-      orderBy: { chunkIndex: "asc" },
-    }),
-  );
-  if (!chunks.length) return sanitizeDocument(document);
-
-  const settings = await crmService.getSettings(userId);
-  const embeddings = await embeddingService.embedTexts(
-    userId,
-    chunks.map((chunk) => chunk.content),
-    { settings },
-  );
-  if (!embeddings.length) {
-    throw new Error("Embedding provider is not configured.");
-  }
-
-  await retryOnSqliteTimeout(() =>
-    prisma.$transaction(
-      chunks.map((chunk, index) =>
-        prisma.knowledgeChunk.update({
-          where: { id: chunk.id },
-          data: {
-            embedding: embeddings[index]?.embedding || undefined,
-            embeddingModel: embeddings[index]?.model || null,
-          },
-        }),
-      ),
-    ),
-  );
+  await indexDocumentFromStoredFile(userId, document);
 
   const updated = await retryOnSqliteTimeout(() =>
     prisma.knowledgeDocument.findUnique({
