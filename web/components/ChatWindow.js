@@ -42,6 +42,17 @@ function formatTime(value) {
 }
 
 function renderStatus(message) {
+  const deliveryStatus = message.outboundDelivery?.status;
+  if (deliveryStatus === "failed") {
+    return "Failed";
+  }
+  if (deliveryStatus === "canceled") {
+    return "Canceled";
+  }
+  if (deliveryStatus === "queued" || deliveryStatus === "sending") {
+    return "Sending";
+  }
+
   const status = message.statuses?.[message.statuses.length - 1]?.status;
   if (!status || message.direction !== "outbound") {
     return "";
@@ -52,6 +63,10 @@ function renderStatus(message) {
     : status === "delivered"
       ? "Delivered"
       : "Sent";
+}
+
+function isDeliveryFailed(message) {
+  return message.outboundDelivery?.status === "failed";
 }
 
 function getTerminalMessageId(message) {
@@ -1360,6 +1375,7 @@ export const ChatWindow = forwardRef(function ChatWindow(
                   isSearchResult &&
                   searchResults[searchResultIndex] === messageIndexInAll;
                 const terminalMessageId = getTerminalMessageId(message);
+                const deliveryFailed = outbound && isDeliveryFailed(message);
 
                 return (
                   <div
@@ -1375,6 +1391,8 @@ export const ChatWindow = forwardRef(function ChatWindow(
                           : isSearchResult
                             ? "ring-1 ring-brand-500/50 " +
                               (outbound ? "bg-[#144d37]" : "bg-[#2e2f2f]")
+                            : deliveryFailed
+                              ? "bg-red-950/80 ring-1 ring-red-400/30"
                             : outbound
                               ? "bg-[#144d37]"
                               : "bg-[#2e2f2f]"
@@ -1445,8 +1463,21 @@ export const ChatWindow = forwardRef(function ChatWindow(
 
                       <div className="mt-3 flex items-center justify-end gap-3 text-[11px] text-white/35">
                         <span>{formatTime(message.createdAt)}</span>
-                        {outbound ? <span>{renderStatus(message)}</span> : null}
+                        {outbound ? (
+                          <span
+                            className={
+                              deliveryFailed ? "font-semibold text-red-200" : ""
+                            }
+                          >
+                            {renderStatus(message)}
+                          </span>
+                        ) : null}
                       </div>
+                      {deliveryFailed && message.outboundDelivery?.lastError ? (
+                        <p className="mt-2 text-[11px] leading-5 text-red-100/75">
+                          {message.outboundDelivery.lastError}
+                        </p>
+                      ) : null}
 
                       {hoveredMessageId === message.id && (
                         <div className="absolute right-2 top-2 flex items-center gap-1">

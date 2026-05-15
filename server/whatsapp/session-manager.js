@@ -21,6 +21,25 @@ function safeAsyncListener(handler, label) {
   };
 }
 
+function envNumber(name, fallback) {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function withTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 class SessionManager extends EventEmitter {
   constructor({ config }) {
     super();
@@ -30,7 +49,20 @@ class SessionManager extends EventEmitter {
     this.manualDisconnects = new Set();
     this.qrPersistTimers = new Map();
     this.queuedQrStates = new Map();
+    this.reconnectAttempts = new Map();
+    this.healthInProgress = new Set();
+    this.healthTimer = null;
     this.resetInProgress = false;
+    this.healthIntervalMs = envNumber("WHATSAPP_HEALTH_INTERVAL_MS", 30000);
+    this.healthTimeoutMs = envNumber("WHATSAPP_HEALTH_TIMEOUT_MS", 10000);
+    this.reconnectBaseDelayMs = envNumber(
+      "WHATSAPP_RECONNECT_BASE_DELAY_MS",
+      5000,
+    );
+    this.reconnectMaxDelayMs = envNumber(
+      "WHATSAPP_RECONNECT_MAX_DELAY_MS",
+      120000,
+    );
   }
 
   async hydrate(sessions) {
@@ -121,6 +153,7 @@ class SessionManager extends EventEmitter {
           status: "connecting",
           transportType: candidate.transportType,
           lastError: previousError,
+          lastHealthCheckAt: new Date(),
         });
 
         await candidate.adapter.connect();
@@ -184,6 +217,12 @@ class SessionManager extends EventEmitter {
     adapter.on(
       "status",
       safeAsyncListener(async (payload) => {
+        const currentRecord = this.adapters.get(session.id);
+        if (currentRecord) {
+          currentRecord.status = payload.status;
+          currentRecord.transportType = payload.transportType || transportType;
+        }
+
         const nextQrCode =
           payload.status === "ready" ||
           payload.status === "disconnected" ||
@@ -193,6 +232,7 @@ class SessionManager extends EventEmitter {
 
         if (payload.status === "ready") {
           this.clearRetry(session.id);
+          this.reconnectAttempts.delete(session.id);
         }
 
         if (
@@ -209,6 +249,10 @@ class SessionManager extends EventEmitter {
           lastError: payload.lastError || null,
           qrCode: nextQrCode,
           phoneNumber: payload.phoneNumber || undefined,
+          lastSeenAt: payload.status === "ready" ? new Date() : undefined,
+          lastHealthCheckAt:
+            payload.status === "ready" ? new Date() : undefined,
+          reconnectAttempts: payload.status === "ready" ? 0 : undefined,
         });
 
         this.emit("session-status", {
@@ -220,6 +264,10 @@ class SessionManager extends EventEmitter {
           lastError: payload.lastError || null,
           qrCode: nextQrCode,
           phoneNumber: payload.phoneNumber || undefined,
+          lastSeenAt: payload.status === "ready" ? new Date() : undefined,
+          lastHealthCheckAt:
+            payload.status === "ready" ? new Date() : undefined,
+          reconnectAttempts: payload.status === "ready" ? 0 : undefined,
         });
 
         if (
@@ -297,12 +345,17 @@ class SessionManager extends EventEmitter {
       });
     });
 
-    this.adapters.set(session.id, { adapter });
+    this.adapters.set(session.id, {
+      adapter,
+      status: "connecting",
+      transportType,
+    });
   }
 
   async disconnectSession(userId, sessionId) {
     this.manualDisconnects.add(sessionId);
     this.clearRetry(sessionId);
+    this.reconnectAttempts.delete(sessionId);
     this.clearQueuedQrPersist(sessionId);
     const session = await sessionService.getSessionById(userId, sessionId);
     if (!session) {
@@ -319,6 +372,7 @@ class SessionManager extends EventEmitter {
       status: "disconnected",
       qrCode: null,
       lastError: null,
+      reconnectAttempts: 0,
     });
   }
 
@@ -336,6 +390,27 @@ class SessionManager extends EventEmitter {
       return;
     }
 
+    const nextAttempt = (this.reconnectAttempts.get(sessionId) || 0) + 1;
+    this.reconnectAttempts.set(sessionId, nextAttempt);
+    const exponentialDelay = Math.min(
+      this.reconnectMaxDelayMs,
+      this.reconnectBaseDelayMs * 2 ** Math.max(0, nextAttempt - 1),
+    );
+    const jitter = Math.floor(Math.random() * Math.min(1000, exponentialDelay));
+    const delayMs = exponentialDelay + jitter;
+
+    sessionService
+      .touchSessionState(sessionId, {
+        reconnectAttempts: nextAttempt,
+        lastError: `Reconnect scheduled after ${reason} in ${Math.round(delayMs / 1000)}s.`,
+      })
+      .catch((error) => {
+        console.warn(
+          `[SessionManager] Failed to persist reconnect attempt for ${sessionId}:`,
+          error.message,
+        );
+      });
+
     const timer = setTimeout(async () => {
       this.retryTimers.delete(sessionId);
 
@@ -349,6 +424,7 @@ class SessionManager extends EventEmitter {
         await sessionService.touchSessionState(sessionId, {
           status: "error",
           lastError: `Reconnect failed after ${reason}: ${error.message}`,
+          reconnectAttempts: this.reconnectAttempts.get(sessionId) || nextAttempt,
         });
 
         this.emit("session-status", {
@@ -357,12 +433,13 @@ class SessionManager extends EventEmitter {
           sessionId,
           status: "error",
           lastError: `Reconnect failed after ${reason}: ${error.message}`,
+          reconnectAttempts: this.reconnectAttempts.get(sessionId) || nextAttempt,
           qrCode: null,
         });
 
         this.scheduleReconnect(userId, sessionId, reason);
       }
-    }, 5000);
+    }, delayMs);
 
     this.retryTimers.set(sessionId, timer);
   }
@@ -373,6 +450,160 @@ class SessionManager extends EventEmitter {
       clearTimeout(timer);
       this.retryTimers.delete(sessionId);
     }
+  }
+
+  async runHealthCheckOnce() {
+    if (this.resetInProgress) return [];
+
+    const checks = Array.from(this.adapters.entries()).map(
+      async ([sessionId, record]) => {
+        if (this.healthInProgress.has(sessionId)) return null;
+        if (this.manualDisconnects.has(sessionId)) return null;
+
+        this.healthInProgress.add(sessionId);
+        try {
+          if (record.status !== "ready") return null;
+          return await this.checkSessionHealth(sessionId, record);
+        } finally {
+          this.healthInProgress.delete(sessionId);
+        }
+      },
+    );
+
+    const results = await Promise.allSettled(checks);
+    return results
+      .map((result) => (result.status === "fulfilled" ? result.value : null))
+      .filter(Boolean);
+  }
+
+  async checkSessionHealth(sessionId, record) {
+    const adapter = record?.adapter;
+    const now = new Date();
+    if (!adapter || typeof adapter.healthCheck !== "function") {
+      return null;
+    }
+
+    let health;
+    try {
+      health = await withTimeout(
+        adapter.healthCheck(),
+        this.healthTimeoutMs,
+        `WhatsApp health check timed out after ${this.healthTimeoutMs}ms.`,
+      );
+    } catch (error) {
+      await this.handleUnhealthySession(sessionId, {
+        reason: error.message,
+        checkedAt: now,
+      });
+      return { sessionId, ok: false, error: error.message };
+    }
+
+    if (!health?.ok) {
+      await this.handleUnhealthySession(sessionId, {
+        reason: `WhatsApp health check failed: ${health?.state || "unknown state"}`,
+        checkedAt: now,
+      });
+      return { sessionId, ok: false, state: health?.state || null };
+    }
+
+    const session = await sessionService.touchSessionState(sessionId, {
+      status: "ready",
+      qrCode: null,
+      lastError: null,
+      lastHealthCheckAt: now,
+      lastSeenAt: now,
+      phoneNumber: health.phoneNumber || undefined,
+      reconnectAttempts: 0,
+    });
+    this.reconnectAttempts.delete(sessionId);
+
+    if (session) {
+      this.emit("session-status", {
+        id: session.id,
+        userId: session.userId,
+        sessionId: session.id,
+        status: "ready",
+        transportType: health.transportType || session.transportType,
+        lastError: null,
+        qrCode: null,
+        phoneNumber: health.phoneNumber || session.phoneNumber || undefined,
+        lastHealthCheckAt: now,
+        lastSeenAt: now,
+        reconnectAttempts: 0,
+      });
+    }
+
+    return { sessionId, ok: true, state: health.state || null };
+  }
+
+  async handleUnhealthySession(sessionId, { reason, checkedAt = new Date() }) {
+    const session = await sessionService.touchSessionState(sessionId, {
+      status: "error",
+      qrCode: null,
+      lastError: reason,
+      lastHealthCheckAt: checkedAt,
+    });
+
+    if (session) {
+      this.emit("session-status", {
+        id: session.id,
+        userId: session.userId,
+        sessionId: session.id,
+        status: "error",
+        transportType: session.transportType,
+        lastError: reason,
+        qrCode: null,
+        lastHealthCheckAt: checkedAt,
+        lastSeenAt: session.lastSeenAt,
+        reconnectAttempts: session.reconnectAttempts,
+      });
+    }
+
+    await this.teardownAdapter(sessionId);
+
+    if (session && !this.manualDisconnects.has(sessionId)) {
+      this.scheduleReconnect(session.userId, session.id, "health-check");
+    }
+  }
+
+  async teardownAdapter(sessionId) {
+    const existing = this.adapters.get(sessionId);
+    if (!existing) return;
+
+    this.adapters.delete(sessionId);
+    try {
+      existing.adapter.removeAllListeners();
+    } catch (error) {
+      // ignore listener cleanup errors
+    }
+    try {
+      await withTimeout(
+        existing.adapter.disconnect(),
+        this.healthTimeoutMs,
+        `WhatsApp adapter teardown timed out after ${this.healthTimeoutMs}ms.`,
+      );
+    } catch (error) {
+      console.warn(
+        `[SessionManager] Failed to teardown unhealthy session ${sessionId}:`,
+        error.message,
+      );
+    }
+  }
+
+  startHealthCheckWorker() {
+    if (this.healthTimer) return;
+    this.healthTimer = setInterval(() => {
+      this.runHealthCheckOnce().catch((error) => {
+        console.error("[SessionManager] WhatsApp health check failed:", error);
+      });
+    }, this.healthIntervalMs);
+    if (this.healthTimer.unref) this.healthTimer.unref();
+  }
+
+  stopHealthCheckWorker() {
+    if (!this.healthTimer) return;
+    clearInterval(this.healthTimer);
+    this.healthTimer = null;
   }
 
   queueQrStatePersist(sessionId, data) {
@@ -419,6 +650,7 @@ class SessionManager extends EventEmitter {
 
   async stopAll() {
     this.resetInProgress = true;
+    this.stopHealthCheckWorker();
     for (const [sessionId, existing] of Array.from(this.adapters.entries())) {
       try {
         this.manualDisconnects.add(sessionId);
@@ -441,6 +673,7 @@ class SessionManager extends EventEmitter {
         // ignore
       }
       this.clearRetry(sessionId);
+      this.reconnectAttempts.delete(sessionId);
       this.clearQueuedQrPersist(sessionId);
       this.adapters.delete(sessionId);
     }

@@ -84,21 +84,24 @@ model ApiKey {
 }
 
 model WhatsappSession {
-  id            String                @id @default(cuid())
-  userId        String
-  name          String
-  phoneNumber   String?
-  status        SessionState          @default(disconnected)
-  qrCode        String?
-  transportType TransportType         @default(mock)
-  lastError     String?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chats         Chat[]
-  messages      Message[]
-  contacts      Contact[]
-  crmAiSettings CrmSessionAiSetting[]
+  id                String                @id @default(cuid())
+  userId            String
+  name              String
+  phoneNumber       String?
+  status            SessionState          @default(disconnected)
+  qrCode            String?
+  transportType     TransportType         @default(mock)
+  lastError         String?
+  lastHealthCheckAt DateTime?
+  lastSeenAt        DateTime?
+  reconnectAttempts Int                   @default(0)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chats             Chat[]
+  messages          Message[]
+  contacts          Contact[]
+  crmAiSettings     CrmSessionAiSetting[]
 
   @@index([userId])
   @@map("whatsapp_sessions")
@@ -364,6 +367,8 @@ model WebhookDeliveryLog {
   url            String
   status         String    @default("pending")
   attempts       Int       @default(0)
+  maxAttempts    Int       @default(3)
+  nextAttemptAt  DateTime  @default(now())
   payload        Json
   responseStatus Int?
   responseBody   String?
@@ -377,6 +382,7 @@ model WebhookDeliveryLog {
   message Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
 
   @@index([userId, status, createdAt])
+  @@index([status, nextAttemptAt])
   @@index([userId, chatId, createdAt])
   @@map("webhook_delivery_logs")
 }

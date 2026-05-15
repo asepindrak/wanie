@@ -292,6 +292,30 @@ export const useAppStore = create((set, get) => ({
       return { messagesByChat: nextMessagesByChat };
     });
   },
+  updateMessageDelivery: (delivery = {}) => {
+    if (!delivery?.messageId) return;
+
+    set((state) => {
+      const nextMessagesByChat = Object.fromEntries(
+        Object.entries(state.messagesByChat).map(([chatId, messages]) => [
+          chatId,
+          messages.map((message) =>
+            message.id === delivery.messageId
+              ? {
+                  ...message,
+                  outboundDelivery: {
+                    ...(message.outboundDelivery || {}),
+                    ...delivery,
+                  },
+                }
+              : message,
+          ),
+        ]),
+      );
+
+      return { messagesByChat: nextMessagesByChat };
+    });
+  },
   updateMessage: (message) => {
     set((state) => ({
       messagesByChat: Object.fromEntries(

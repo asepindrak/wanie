@@ -28,6 +28,14 @@ function SessionAvatar({ label }) {
   return <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#202c33] text-sm font-semibold text-white">{initials(label)}</div>;
 }
 
+function formatHealthTime(value) {
+  if (!value) return "Never";
+  return new Intl.DateTimeFormat("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export function SessionSidebar({
   sessions,
   activeSessionId,
@@ -100,6 +108,12 @@ export function SessionSidebar({
                  <p className="text-sm text-white/45">{activeSession.phoneNumber || "Waiting for WhatsApp pairing"}</p>
                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/30">
                    Transport: {activeSession.transportType === "mock" ? "Mock" : "WhatsApp Web"}
+                 </p>
+                 <p className="mt-1 text-xs text-white/35">
+                   Health: {formatHealthTime(activeSession.lastHealthCheckAt)}
+                   {activeSession.reconnectAttempts
+                     ? ` · reconnect #${activeSession.reconnectAttempts}`
+                     : ""}
                  </p>
                </div>
                <SessionStatusBadge status={activeSession.status} />

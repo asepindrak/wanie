@@ -608,6 +608,19 @@ function createApp({ config, sessionManager }) {
     }),
   );
 
+  app.post(
+    "/api/webhook/test",
+    requireAuth,
+    withAsync(async (req, res) => {
+      const result = await webhookService.testWebhook(req.user.id);
+      res.json({
+        ok: Boolean(result?.ok),
+        delivery: result?.log || null,
+        error: result?.error || null,
+      });
+    }, 400),
+  );
+
   app.get(
     "/api/webhook/deliveries",
     requireAuth,
@@ -657,6 +670,21 @@ function createApp({ config, sessionManager }) {
         req.params.deliveryId,
         {
           sessionManager,
+          io: req.app.get("io"),
+        },
+      );
+      res.json({ delivery: outboundDeliveryService.serializeJob(delivery) });
+    }, 400),
+  );
+
+  app.post(
+    "/api/outbound-deliveries/:deliveryId/cancel",
+    requireAuth,
+    withAsync(async (req, res) => {
+      const delivery = await outboundDeliveryService.cancelJob(
+        req.user.id,
+        req.params.deliveryId,
+        {
           io: req.app.get("io"),
         },
       );

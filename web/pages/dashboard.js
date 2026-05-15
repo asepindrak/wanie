@@ -26,6 +26,7 @@ export default function DashboardPage() {
     upsertChat,
     addMessage,
     updateMessageStatus,
+    updateMessageDelivery,
     updateMessage,
     upsertTerminalRecord,
     setSocket,
@@ -228,6 +229,21 @@ export default function DashboardPage() {
       updateMessageStatus(payload);
     });
 
+    socketClient.on("outbound_delivery_update", (payload) => {
+      const delivery = payload?.delivery;
+      if (delivery?.messageId) {
+        updateMessageDelivery(delivery);
+      }
+      if (delivery?.status === "failed") {
+        const target =
+          delivery.message?.chat?.contact?.displayName ||
+          delivery.message?.chat?.title ||
+          delivery.message?.receiver ||
+          "message";
+        setError(`Delivery failed for ${target}: ${delivery.lastError}`);
+      }
+    });
+
     socketClient.on("contact_list_update", (chat) => {
       upsertChat(chat);
       // trigger contacts refresh and show loading badge while fetching
@@ -386,6 +402,7 @@ export default function DashboardPage() {
     loadWorkspace,
     setSocket,
     token,
+    updateMessageDelivery,
     updateMessageStatus,
     upsertTerminalRecord,
     upsertChat,

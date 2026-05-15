@@ -213,6 +213,16 @@ OPENWA_JWT_SECRET=your_secret_key_here
 OPENWA_AUTO_OPEN=false
 OPENWA_USE_WWEBJS=true
 OPENWA_ALLOW_MOCK=false
+OUTBOUND_DELIVERY_MAX_ATTEMPTS=5
+OUTBOUND_DELIVERY_WORKER_INTERVAL_MS=5000
+WEBHOOK_DELIVERY_MAX_ATTEMPTS=3
+WEBHOOK_DELIVERY_WORKER_INTERVAL_MS=5000
+OUTBOUND_DELIVERY_DELIVERED_RETENTION_DAYS=30
+WEBHOOK_DELIVERY_DELIVERED_RETENTION_DAYS=30
+WHATSAPP_HEALTH_INTERVAL_MS=30000
+WHATSAPP_HEALTH_TIMEOUT_MS=10000
+WHATSAPP_RECONNECT_BASE_DELAY_MS=5000
+WHATSAPP_RECONNECT_MAX_DELAY_MS=120000
 DATABASE_URL=file:./storage/database/openwa.db
 ```
 
@@ -227,6 +237,14 @@ If `OPENWA_JWT_SECRET` is not set, the first `openwa` run will prompt you to ent
 - Set `OPENWA_ALLOW_MOCK=true` to allow the mock adapter for testing.
 - `OPENWA_LLM_PROVIDER` specifies the default LLM for assistant operations (openai, anthropic, ollama, openrouter).
 - `OPENWA_TERMINAL_ALLOWLIST` restricts which terminal commands can auto-execute without manual approval (space-separated patterns).
+- `OUTBOUND_DELIVERY_MAX_ATTEMPTS` controls capped retry for WhatsApp and Telegram sends.
+- `OUTBOUND_DELIVERY_BACKOFF_MS` controls outbound retry delays as comma-separated milliseconds.
+- `WEBHOOK_DELIVERY_MAX_ATTEMPTS` controls capped retry for incoming-message webhook delivery.
+- `WEBHOOK_DELIVERY_BACKOFF_MS` controls webhook retry delays as comma-separated milliseconds.
+- `OUTBOUND_DELIVERY_DELIVERED_RETENTION_DAYS` and `WEBHOOK_DELIVERY_DELIVERED_RETENTION_DAYS` control cleanup of old delivered delivery records.
+- `WHATSAPP_HEALTH_INTERVAL_MS` controls active WhatsApp device health checks.
+- `WHATSAPP_HEALTH_TIMEOUT_MS` controls how long a WhatsApp health probe may hang before reconnect.
+- `WHATSAPP_RECONNECT_BASE_DELAY_MS` and `WHATSAPP_RECONNECT_MAX_DELAY_MS` control reconnect backoff.
 - Terminal commands are only auto-executed if `approvalMode` is `auto` and the command matches an allowlist entry or user settings allow it.
 
 ## Typical usage flow
@@ -408,6 +426,7 @@ Returns the initial workspace payload, including the current user, sessions, cha
 - `POST /api/messages/send`
 - `GET /api/outbound-deliveries`
 - `POST /api/outbound-deliveries/{deliveryId}/retry`
+- `POST /api/outbound-deliveries/{deliveryId}/cancel`
 - `DELETE /api/messages/{messageId}`
 - `POST /api/messages/{messageId}/forward`
 
@@ -488,6 +507,7 @@ Configure the webhook from **Settings -> Webhooks** or with:
 - `GET /api/webhook` — read the current webhook.
 - `POST /api/webhook` — set `{ "url": "https://example.com/openwa-webhook", "apiKey": "shared-secret" }`.
 - `DELETE /api/webhook` — remove the webhook.
+- `POST /api/webhook/test` — send a synthetic `webhook.test` payload to the configured URL.
 - `GET /api/webhook/deliveries` — list recent webhook delivery attempts.
 - `POST /api/webhook/deliveries/{deliveryId}/retry` — replay a stored webhook payload.
 
@@ -528,7 +548,7 @@ Payload shape:
 
 The external app should verify `x-openwa-webhook-key`, store `chat.id`, and reply through the API.
 
-Webhook deliveries are logged per user. OpenWA retries transient delivery failures automatically, and failed deliveries can be replayed with the retry endpoint.
+Webhook deliveries are logged per user. OpenWA retries transient delivery failures automatically, emits realtime dashboard updates, and failed deliveries can be replayed with the retry endpoint.
 
 Minimal Express receiver:
 

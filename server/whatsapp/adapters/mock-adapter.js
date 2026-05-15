@@ -24,6 +24,14 @@ class MockAdapter extends EventEmitter {
     this.emit("status", { status: "disconnected", transportType: "mock" });
   }
 
+  async healthCheck() {
+    return {
+      ok: this.connected,
+      state: this.connected ? "CONNECTED" : "DISCONNECTED",
+      transportType: "mock",
+    };
+  }
+
   async sendMessage(payload) {
     if (!this.connected) {
       throw new Error("Mock session is not connected yet.");

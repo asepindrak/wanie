@@ -27,6 +27,7 @@ const { v4: uuidv4 } = require("uuid");
 const toolCredentialService = require("./tool-credential-service");
 const TelegramConfigService = require("./telegram-config-service");
 const TelegramService = require("./telegram-service");
+const outboundDeliveryService = require("./outbound-delivery-service");
 const userSettings = require("./user-settings");
 const QRCode = require("qrcode");
 
@@ -2399,7 +2400,30 @@ async function sendAssistantMessage(
 ) {
   try {
     let assistantMsg;
-    if (chatId) {
+    const chat = chatId
+      ? await chatService.getChatWithContact(userId, chatId)
+      : null;
+    const isTelegramChat =
+      chat &&
+      (chat.transportType === "telegram" ||
+        String(chat.contact?.externalId || "").startsWith("tg:"));
+
+    if (isTelegramChat) {
+      assistantMsg = await chatService.createOutgoingMessage({
+        userId,
+        chatId,
+        body,
+        type: mediaFileId ? "image" : "text",
+        mediaFileId,
+      });
+      const deliveryJob = await outboundDeliveryService.enqueueMessage({
+        userId,
+        messageId: assistantMsg.message.id,
+        io,
+      });
+      assistantMsg.deliveryJob =
+        outboundDeliveryService.serializeJob(deliveryJob);
+    } else if (chatId) {
       assistantMsg = await chatService.storeIncomingMessageInChat({
         userId,
         chatId,
@@ -2418,31 +2442,6 @@ async function sendAssistantMessage(
         mediaFileId,
         type: mediaFileId ? "image" : "text",
       });
-    }
-
-    // If the chat is a Telegram chat, send to Telegram as well
-    const isTelegramChat =
-      assistantMsg &&
-      assistantMsg.chat &&
-      (assistantMsg.chat.transportType === "telegram" ||
-        String(assistantMsg.chat?.contact?.externalId || "").startsWith("tg:"));
-
-    if (isTelegramChat) {
-      const telegramId = TelegramService.extractTelegramId(
-        assistantMsg.chat.contact.externalId,
-      );
-      if (telegramId) {
-        if (assistantMsg.message.mediaFileId) {
-          await TelegramService.sendMedia(
-            userId,
-            telegramId,
-            assistantMsg.message.mediaFile,
-            body,
-          );
-        } else {
-          await TelegramService.sendMessage(userId, telegramId, body);
-        }
-      }
     }
 
     io.to(`user:${userId}`).emit("new_message", assistantMsg.message);

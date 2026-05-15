@@ -60,7 +60,8 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Message direction tracking (inbound/outbound)
 - Message type support (text, image, video, document, audio, etc.)
 - Message delivery status (sent, delivered, read)
-- Durable outbound delivery queue with capped retry and manual retry for failed sends
+- Durable outbound delivery queue with capped retry, cancel, cleanup, and manual retry for failed sends
+- Active WhatsApp device health checks with automatic reconnect and backoff
 - Message timestamps
 - Sender and receiver information
 
@@ -106,7 +107,7 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Telegram bot can receive customer messages as CRM chats
 - Telegram customer messages are stored in the same chat/message database
 - Telegram customer messages are delivered to configured incoming webhooks
-- Webhook delivery attempts are logged and failed payloads can be retried
+- Webhook delivery attempts are logged, testable from settings, retried by a durable worker, updated in realtime, cleaned up by retention, and failed payloads can be retried
 - Webhook shared secrets are stored encrypted in the runtime config store
 - Telegram CRM chats support AI draft and auto-reply modes
 - Telegram chats with CRM mode off are stored in the dashboard without giving non-admin users assistant tool access

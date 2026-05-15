@@ -6,8 +6,40 @@ const { prisma } = require("../database/client");
 const { rootDir } = require("../utils/paths");
 
 const storePath = path.join(rootDir, "storage", "webhooks.json");
-const deliveryTimeoutMs = 10000;
-const retryDelaysMs = [0, 1000, 3000];
+const deliveryTimeoutMs = Math.max(
+  1000,
+  Number(process.env.WEBHOOK_DELIVERY_TIMEOUT_MS || 10000),
+);
+const defaultMaxAttempts = Math.max(
+  1,
+  Number(process.env.WEBHOOK_DELIVERY_MAX_ATTEMPTS || 3),
+);
+const workerIntervalMs = Math.max(
+  1000,
+  Number(process.env.WEBHOOK_DELIVERY_WORKER_INTERVAL_MS || 5000),
+);
+const retryDelaysMs = String(
+  process.env.WEBHOOK_DELIVERY_BACKOFF_MS || "1000,3000,10000",
+)
+  .split(",")
+  .map((item) => Number(item.trim()))
+  .filter((item) => Number.isFinite(item) && item >= 0);
+const activeDeliveries = new Set();
+
+let workerTimer = null;
+let cleanupTimer = null;
+let socketIo = null;
+
+function userRoom(userId) {
+  return `user:${userId}`;
+}
+
+function emitDeliveryUpdate(log) {
+  if (!socketIo || !log?.userId) return;
+  socketIo.to(userRoom(log.userId)).emit("webhook_delivery_update", {
+    delivery: sanitizeDeliveryLog(log),
+  });
+}
 
 function getEncryptionKey() {
   const secret =
@@ -124,6 +156,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getBackoffMs(attempts) {
+  if (!retryDelaysMs.length) return 30000;
+  const index = Math.max(0, Math.min(attempts - 1, retryDelaysMs.length - 1));
+  return retryDelaysMs[index];
+}
+
 function payloadIds(payload = {}) {
   return {
     chatId: payload.chat?.id || payload.message?.chatId || null,
@@ -141,55 +179,103 @@ async function createDeliveryLog(userId, cfg, payload) {
       url: cfg.url,
       payload,
       status: "pending",
+      maxAttempts: defaultMaxAttempts,
+      nextAttemptAt: new Date(),
     },
   });
 }
 
+function createTestPayload(userId) {
+  const now = new Date().toISOString();
+  return {
+    event: "webhook.test",
+    test: true,
+    sentAt: now,
+    chat: {
+      id: `test-chat-${userId}`,
+      title: "OpenWA Webhook Test",
+      transportType: "whatsapp",
+      contact: {
+        id: `test-contact-${userId}`,
+        displayName: "OpenWA Test Customer",
+        externalId: "6281234567890@c.us",
+      },
+    },
+    message: {
+      id: `test-message-${Date.now()}`,
+      chatId: `test-chat-${userId}`,
+      sessionId: "test-session",
+      sender: "6281234567890@c.us",
+      receiver: `user:${userId}`,
+      body: "This is a test webhook from OpenWA. Reply with HTTP 2xx to mark delivery as successful.",
+      type: "text",
+      direction: "inbound",
+      mediaFile: null,
+      statuses: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+  };
+}
+
 async function runDelivery(userId, logId, cfg, payload) {
-  let lastError = null;
+  if (activeDeliveries.has(logId)) return null;
+  activeDeliveries.add(logId);
 
-  for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
-    const delayMs = retryDelaysMs[attempt];
-    if (delayMs > 0) await sleep(delayMs);
+  try {
+    const current = await prisma.webhookDeliveryLog.findFirst({
+      where: { id: logId, userId },
+    });
+    if (!current || current.status === "delivered" || current.status === "failed") {
+      return current ? { ok: current.status === "delivered", log: current } : null;
+    }
 
+    const sendingLog = await prisma.webhookDeliveryLog.update({
+      where: { id: logId },
+      data: { status: "sending" },
+    });
+    emitDeliveryUpdate(sendingLog);
+
+    const nextAttempts = current.attempts + 1;
     try {
       const result = await deliver(cfg, payload);
       const log = await prisma.webhookDeliveryLog.update({
         where: { id: logId },
         data: {
           status: "delivered",
-          attempts: attempt + 1,
+          attempts: nextAttempts,
           responseStatus: result.responseStatus,
           responseBody: result.responseBody || null,
           error: null,
           deliveredAt: new Date(),
         },
       });
-      return { ok: true, attempts: attempt + 1, log };
+      emitDeliveryUpdate(log);
+      return { ok: true, attempts: nextAttempts, log };
     } catch (err) {
-      lastError = err;
-      await prisma.webhookDeliveryLog.updateMany({
-        where: { id: logId, userId },
+      const finalFailure = nextAttempts >= current.maxAttempts;
+      const log = await prisma.webhookDeliveryLog.update({
+        where: { id: logId },
         data: {
-          attempts: attempt + 1,
+          status: finalFailure ? "failed" : "pending",
+          attempts: nextAttempts,
           responseStatus: err.responseStatus || null,
           responseBody: err.responseBody || null,
           error: err.message || "Webhook delivery failed",
+          nextAttemptAt: finalFailure
+            ? new Date()
+            : new Date(Date.now() + getBackoffMs(nextAttempts)),
         },
       });
+      emitDeliveryUpdate(log);
+      if (finalFailure) {
+        console.error("Failed to deliver webhook for user", userId, err);
+      }
+      return { ok: false, error: log.error, log };
     }
+  } finally {
+    activeDeliveries.delete(logId);
   }
-
-  const log = await prisma.webhookDeliveryLog.update({
-    where: { id: logId },
-    data: {
-      status: "failed",
-      error: lastError?.message || "Webhook delivery failed",
-    },
-  });
-
-  console.error("Failed to deliver webhook for user", userId, lastError);
-  return { ok: false, error: log.error, log };
 }
 
 function sanitizeDeliveryLog(log) {
@@ -202,6 +288,8 @@ function sanitizeDeliveryLog(log) {
     url: log.url,
     status: log.status,
     attempts: log.attempts,
+    maxAttempts: log.maxAttempts,
+    nextAttemptAt: log.nextAttemptAt,
     responseStatus: log.responseStatus,
     responseBody: log.responseBody,
     error: log.error,
@@ -215,6 +303,10 @@ module.exports = {
   getWebhook: (userId) => {
     const store = readStore();
     return normalizeConfigForRead(store[userId]);
+  },
+
+  setIo: (io) => {
+    socketIo = io || null;
   },
 
   setWebhook: (userId, cfg) => {
@@ -235,6 +327,19 @@ module.exports = {
     if (!cfg || !cfg.url) return null;
 
     const log = await createDeliveryLog(userId, cfg, payload);
+    emitDeliveryUpdate(log);
+    return runDelivery(userId, log.id, cfg, payload);
+  },
+
+  testWebhook: async (userId) => {
+    const cfg = module.exports.getWebhook(userId);
+    if (!cfg || !cfg.url) {
+      throw new Error("Webhook is not configured.");
+    }
+
+    const payload = createTestPayload(userId);
+    const log = await createDeliveryLog(userId, cfg, payload);
+    emitDeliveryUpdate(log);
     return runDelivery(userId, log.id, cfg, payload);
   },
 
@@ -264,17 +369,123 @@ module.exports = {
     const cfg = module.exports.getWebhook(userId);
     if (!cfg || !cfg.url) throw new Error("Webhook is not configured.");
 
-    await prisma.webhookDeliveryLog.update({
+    const resetLog = await prisma.webhookDeliveryLog.update({
       where: { id: log.id },
       data: {
         status: "pending",
+        attempts: 0,
         error: null,
         responseStatus: null,
         responseBody: null,
         deliveredAt: null,
+        nextAttemptAt: new Date(),
       },
     });
+    emitDeliveryUpdate(resetLog);
 
     return runDelivery(userId, log.id, cfg, log.payload);
+  },
+
+  processDueDeliveries: async ({ limit = 25 } = {}) => {
+    const logs = await prisma.webhookDeliveryLog.findMany({
+      where: {
+        status: { in: ["pending", "sending"] },
+        nextAttemptAt: { lte: new Date() },
+      },
+      orderBy: [{ nextAttemptAt: "asc" }, { createdAt: "asc" }],
+      take: limit,
+    });
+
+    const results = [];
+    for (const log of logs) {
+      const cfg = module.exports.getWebhook(log.userId);
+      if (!cfg || !cfg.url) {
+        const failedLog = await prisma.webhookDeliveryLog.update({
+            where: { id: log.id },
+            data: {
+              status: "failed",
+              error: "Webhook is not configured.",
+            },
+          });
+        emitDeliveryUpdate(failedLog);
+        results.push(failedLog);
+        continue;
+      }
+      results.push(await runDelivery(log.userId, log.id, cfg, log.payload));
+    }
+    return results.filter(Boolean);
+  },
+
+  startWorker: ({ io } = {}) => {
+    if (io) module.exports.setIo(io);
+    if (workerTimer) return;
+    workerTimer = setInterval(() => {
+      module.exports.processDueDeliveries().catch((error) => {
+        console.error("Webhook delivery worker failed:", error);
+      });
+    }, workerIntervalMs);
+    if (workerTimer.unref) workerTimer.unref();
+  },
+
+  stopWorker: () => {
+    if (!workerTimer) return;
+    clearInterval(workerTimer);
+    workerTimer = null;
+  },
+
+  cleanupOldDeliveries: async ({
+    deliveredRetentionDays = Number(
+      process.env.WEBHOOK_DELIVERY_DELIVERED_RETENTION_DAYS || 30,
+    ),
+    terminalRetentionDays = Number(
+      process.env.WEBHOOK_DELIVERY_TERMINAL_RETENTION_DAYS || 90,
+    ),
+  } = {}) => {
+    const now = Date.now();
+    const deliveredCutoff = new Date(
+      now - Math.max(1, deliveredRetentionDays) * 24 * 60 * 60 * 1000,
+    );
+    const terminalCutoff = new Date(
+      now - Math.max(1, terminalRetentionDays) * 24 * 60 * 60 * 1000,
+    );
+
+    const [delivered, terminal] = await Promise.all([
+      prisma.webhookDeliveryLog.deleteMany({
+        where: {
+          status: "delivered",
+          updatedAt: { lt: deliveredCutoff },
+        },
+      }),
+      prisma.webhookDeliveryLog.deleteMany({
+        where: {
+          status: "failed",
+          updatedAt: { lt: terminalCutoff },
+        },
+      }),
+    ]);
+
+    return {
+      delivered: delivered.count,
+      terminal: terminal.count,
+    };
+  },
+
+  startCleanupWorker: () => {
+    if (cleanupTimer) return;
+    module.exports.cleanupOldDeliveries().catch((error) => {
+      console.error("Webhook delivery cleanup failed:", error);
+    });
+    cleanupTimer = setInterval(() => {
+      module.exports.cleanupOldDeliveries().catch((error) => {
+        console.error("Webhook delivery cleanup failed:", error);
+      });
+    }, 60 * 60 * 1000);
+    if (cleanupTimer.unref) cleanupTimer.unref();
+  },
+
+  stopCleanupWorker: () => {
+    if (!cleanupTimer) return;
+    clearInterval(cleanupTimer);
+    cleanupTimer = null;
   },
 };

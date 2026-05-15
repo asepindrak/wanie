@@ -213,6 +213,34 @@ class WwebjsAdapter extends EventEmitter {
     this.emit("status", { status: "disconnected", transportType: "wwebjs" });
   }
 
+  async healthCheck() {
+    if (!this.client) {
+      return {
+        ok: false,
+        state: "NO_CLIENT",
+        transportType: "wwebjs",
+      };
+    }
+
+    const state =
+      typeof this.client.getState === "function"
+        ? await this.client.getState()
+        : null;
+    const normalizedState = String(state || "").toUpperCase();
+    const hasIdentity = Boolean(this.client.info?.wid?._serialized);
+    const ok =
+      normalizedState === "CONNECTED" ||
+      normalizedState === "OPENING" ||
+      (hasIdentity && !["UNPAIRED", "UNLAUNCHED", "CONFLICT"].includes(normalizedState));
+
+    return {
+      ok,
+      state: normalizedState || (hasIdentity ? "READY" : "UNKNOWN"),
+      transportType: "wwebjs",
+      phoneNumber: this.client.info?.wid?.user || null,
+    };
+  }
+
   async getSyncSnapshot() {
     if (!this.client) {
       throw new Error("WhatsApp client is not ready.");

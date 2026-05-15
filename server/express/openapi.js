@@ -321,6 +321,19 @@ function createOpenApiDocument(config) {
           },
         },
       },
+      "/api/webhook/test": {
+        post: {
+          tags: ["Webhooks"],
+          summary: "Send a test webhook payload",
+          description:
+            "Deliver a synthetic webhook.test payload to the configured webhook URL and store the attempt in webhook delivery logs.",
+          security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+          responses: {
+            200: { description: "Webhook test delivery result" },
+            400: { description: "Webhook is not configured or delivery failed" },
+          },
+        },
+      },
       "/api/health": {
         get: {
           tags: ["Runtime"],
@@ -866,7 +879,7 @@ function createOpenApiDocument(config) {
               in: "query",
               schema: {
                 type: "string",
-                enum: ["queued", "sending", "delivered", "failed"],
+                enum: ["queued", "sending", "delivered", "failed", "canceled"],
               },
             },
             {
@@ -902,6 +915,26 @@ function createOpenApiDocument(config) {
           ],
           responses: {
             200: { description: "Retried outbound delivery job" },
+          },
+        },
+      },
+      "/api/outbound-deliveries/{deliveryId}/cancel": {
+        post: {
+          tags: ["Messages"],
+          summary: "Cancel an outbound delivery job",
+          description:
+            "Stop retrying a queued or sending outbound WhatsApp or Telegram delivery job.",
+          security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+          parameters: [
+            {
+              name: "deliveryId",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            200: { description: "Canceled outbound delivery job" },
           },
         },
       },
@@ -1101,6 +1134,7 @@ ${keyBlock}
 8. Track outbound delivery:
   - \`GET /api/outbound-deliveries\` — list recent outbound WhatsApp or Telegram delivery jobs
   - \`POST /api/outbound-deliveries/:deliveryId/retry\` — reset and retry a failed outbound delivery
+  - \`POST /api/outbound-deliveries/:deliveryId/cancel\` — stop retrying a queued outbound delivery
 
 > \`sessionId\` is required when sending a new WhatsApp message by \`phoneNumber\`. Replies to an existing chat can use \`/api/chats/:chatId/messages/send\`; OpenWA uses the chat transport, including Telegram chats whose receiver starts with \`tg:\`.
 
@@ -1144,6 +1178,7 @@ Configure webhooks:
 - \`GET /api/webhook\` — read current webhook configuration.
 - \`POST /api/webhook\` — set webhook \`{ "url": "https://example.com/openwa-webhook", "apiKey": "shared-secret" }\`.
 - \`DELETE /api/webhook\` — remove the webhook.
+- \`POST /api/webhook/test\` — send a synthetic \`webhook.test\` payload to the configured URL.
 - \`GET /api/webhook/deliveries\` — list recent webhook delivery attempts.
 - \`POST /api/webhook/deliveries/:deliveryId/retry\` — replay a stored webhook payload.
 

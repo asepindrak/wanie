@@ -223,6 +223,7 @@ export function SettingsModal({
   const [copied, setCopied] = useState(false);
   const [copiedWebhookExample, setCopiedWebhookExample] = useState(null);
   const token = useAppStore((s) => s.token);
+  const socket = useAppStore((s) => s.socket);
   const setActiveChat = useAppStore((s) => s.setActiveChat);
   const upsertChat = useAppStore((s) => s.upsertChat);
   const terminalAutoApproveAll = useAppStore((s) => s.terminalAutoApproveAll);
@@ -256,6 +257,14 @@ export function SettingsModal({
   const [webhookDeliveriesLoading, setWebhookDeliveriesLoading] =
     useState(false);
   const [retryingWebhookDeliveryId, setRetryingWebhookDeliveryId] =
+    useState(null);
+  const [testingWebhook, setTestingWebhook] = useState(false);
+  const [outboundDeliveries, setOutboundDeliveries] = useState([]);
+  const [outboundDeliveriesLoading, setOutboundDeliveriesLoading] =
+    useState(false);
+  const [retryingOutboundDeliveryId, setRetryingOutboundDeliveryId] =
+    useState(null);
+  const [cancelingOutboundDeliveryId, setCancelingOutboundDeliveryId] =
     useState(null);
   const [resetPasswordValue, setResetPasswordValue] = useState("");
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
@@ -376,6 +385,72 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
     }
   }
 
+  async function testWebhook() {
+    if (!token) return;
+    setTestingWebhook(true);
+    try {
+      const result = await apiFetch("/api/webhook/test", {
+        method: "POST",
+        token,
+      });
+      await loadWebhookDeliveries();
+      if (!result?.ok) {
+        alert(result?.error || "Webhook test failed");
+      }
+    } catch (error) {
+      alert(error.message || "Webhook test failed");
+    } finally {
+      setTestingWebhook(false);
+    }
+  }
+
+  async function loadOutboundDeliveries() {
+    if (!token) return;
+    setOutboundDeliveriesLoading(true);
+    try {
+      const data = await apiFetch("/api/outbound-deliveries?limit=20", {
+        token,
+      });
+      setOutboundDeliveries(data.deliveries || []);
+    } catch (error) {
+      setOutboundDeliveries([]);
+    } finally {
+      setOutboundDeliveriesLoading(false);
+    }
+  }
+
+  async function retryOutboundDelivery(deliveryId) {
+    if (!token || !deliveryId) return;
+    setRetryingOutboundDeliveryId(deliveryId);
+    try {
+      await apiFetch(`/api/outbound-deliveries/${deliveryId}/retry`, {
+        method: "POST",
+        token,
+      });
+      await loadOutboundDeliveries();
+    } catch (error) {
+      alert(error.message || "Failed to retry outbound delivery");
+    } finally {
+      setRetryingOutboundDeliveryId(null);
+    }
+  }
+
+  async function cancelOutboundDelivery(deliveryId) {
+    if (!token || !deliveryId) return;
+    setCancelingOutboundDeliveryId(deliveryId);
+    try {
+      await apiFetch(`/api/outbound-deliveries/${deliveryId}/cancel`, {
+        method: "POST",
+        token,
+      });
+      await loadOutboundDeliveries();
+    } catch (error) {
+      alert(error.message || "Failed to cancel outbound delivery");
+    } finally {
+      setCancelingOutboundDeliveryId(null);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
     let mounted = true;
@@ -444,6 +519,48 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
     if (!open || activeTab !== "webhooks" || !token) return;
     loadWebhookDeliveries();
   }, [open, activeTab, token]);
+
+  useEffect(() => {
+    if (!open || activeTab !== "deliveries" || !token) return;
+    loadOutboundDeliveries();
+  }, [open, activeTab, token]);
+
+  useEffect(() => {
+    if (!socket || !open) return undefined;
+    const onWebhookDeliveryUpdate = (payload = {}) => {
+      const delivery = payload.delivery;
+      if (!delivery?.id) return;
+      setWebhookDeliveries((current) => {
+        const exists = current.some((item) => item.id === delivery.id);
+        const next = exists
+          ? current.map((item) =>
+              item.id === delivery.id ? { ...item, ...delivery } : item,
+            )
+          : [delivery, ...current];
+        return next.slice(0, 10);
+      });
+    };
+    const onOutboundDeliveryUpdate = (payload = {}) => {
+      const delivery = payload.delivery;
+      if (!delivery?.id) return;
+      setOutboundDeliveries((current) => {
+        const exists = current.some((item) => item.id === delivery.id);
+        const next = exists
+          ? current.map((item) =>
+              item.id === delivery.id ? { ...item, ...delivery } : item,
+            )
+          : [delivery, ...current];
+        return next.slice(0, 20);
+      });
+    };
+
+    socket.on("webhook_delivery_update", onWebhookDeliveryUpdate);
+    socket.on("outbound_delivery_update", onOutboundDeliveryUpdate);
+    return () => {
+      socket.off("webhook_delivery_update", onWebhookDeliveryUpdate);
+      socket.off("outbound_delivery_update", onOutboundDeliveryUpdate);
+    };
+  }, [socket, open]);
 
   const handleSaveTelegramConfig = async (e) => {
     e.preventDefault();
@@ -801,6 +918,21 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                               ? "Mock"
                               : "WhatsApp Web"}
                           </p>
+                          <div className="mt-2 grid gap-1 text-xs text-white/35">
+                            <p>
+                              Health:{" "}
+                              {formatDateTime(session.lastHealthCheckAt)}
+                            </p>
+                            <p>
+                              Last seen: {formatDateTime(session.lastSeenAt)}
+                            </p>
+                            {session.reconnectAttempts ? (
+                              <p>
+                                Reconnect attempts:{" "}
+                                {session.reconnectAttempts}
+                              </p>
+                            ) : null}
+                          </div>
                           {session.lastError ? (
                             <p className="mt-3 rounded-2xl bg-red-500/10 px-3 py-2 text-sm text-red-100">
                               {session.lastError}
@@ -906,6 +1038,18 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                   onClick={() => setActiveTab("webhooks")}
                 >
                   Webhooks
+                </button>
+
+                <button
+                  type="button"
+                  className={`rounded-2xl px-4 py-2 text-sm ${
+                    activeTab === "deliveries"
+                      ? "bg-white/5 text-white"
+                      : "bg-transparent text-white/60 hover:bg-white/[0.04]"
+                  }`}
+                  onClick={() => setActiveTab("deliveries")}
+                >
+                  Deliveries
                 </button>
 
                 <button
@@ -1230,6 +1374,14 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                       </button>
                       <button
                         type="button"
+                        className="rounded-2xl bg-white/5 px-4 py-3 text-sm font-medium text-white/75 transition hover:bg-white/10"
+                        onClick={testWebhook}
+                        disabled={webhookLoading || testingWebhook}
+                      >
+                        {testingWebhook ? "Testing..." : "Test webhook"}
+                      </button>
+                      <button
+                        type="button"
                         className="rounded-2xl bg-red-700 px-4 py-3 text-sm text-white/90"
                         onClick={() => onDeleteWebhook()}
                         disabled={webhookLoading}
@@ -1332,8 +1484,8 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="truncate text-xs font-semibold text-white">
-                                  {delivery.status} - {delivery.attempts} attempt
-                                  {delivery.attempts === 1 ? "" : "s"}
+                                  {delivery.status} - {delivery.attempts}/
+                                  {delivery.maxAttempts || 3} attempts
                                 </p>
                                 <p className="mt-1 truncate text-[11px] text-white/40">
                                   {delivery.messageId || delivery.chatId}
@@ -1372,6 +1524,138 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                         ) : null}
                       </div>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "deliveries" && (
+                <div className="rounded-[28px] bg-[#161717] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
+                        Outbound Delivery
+                      </p>
+                      <h3 className="mt-2 text-base font-semibold text-white">
+                        WhatsApp and Telegram send queue
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-white/45">
+                        Messages sent from the dashboard, API, CRM auto-reply,
+                        and assistant integrations are retried automatically.
+                        Failed jobs stop after the retry limit and can be
+                        retried manually here.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-full bg-white/5 px-3 py-1.5 text-xs font-medium text-white/75 transition hover:bg-white/10"
+                      onClick={loadOutboundDeliveries}
+                      disabled={outboundDeliveriesLoading}
+                    >
+                      {outboundDeliveriesLoading ? "Loading" : "Refresh"}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {outboundDeliveries.map((delivery) => {
+                      const title =
+                        delivery.message?.chat?.contact?.displayName ||
+                        delivery.message?.chat?.title ||
+                        delivery.message?.receiver ||
+                        delivery.messageId;
+                      const preview =
+                        delivery.message?.body ||
+                        delivery.message?.type ||
+                        "Outbound message";
+                      return (
+                        <div
+                          key={delivery.id}
+                          className="rounded-[18px] bg-[#2e2f2f] p-3"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize ${
+                                    delivery.status === "delivered"
+                                      ? "bg-brand-500/15 text-brand-100"
+                                      : delivery.status === "failed"
+                                        ? "bg-red-500/15 text-red-100"
+                                        : delivery.status === "canceled"
+                                          ? "bg-white/10 text-white/55"
+                                        : "bg-amber-500/15 text-amber-100"
+                                  }`}
+                                >
+                                  {delivery.status}
+                                </span>
+                                <span className="text-[11px] text-white/40">
+                                  {delivery.transport} - {delivery.attempts}/
+                                  {delivery.maxAttempts} attempts
+                                </span>
+                              </div>
+                              <p className="mt-2 truncate text-sm font-semibold text-white">
+                                {title}
+                              </p>
+                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/45">
+                                {preview}
+                              </p>
+                              <p className="mt-1 text-[11px] text-white/30">
+                                Updated: {formatDateTime(delivery.updatedAt)}
+                              </p>
+                            </div>
+
+                            <div className="flex shrink-0 flex-wrap items-center gap-2">
+                              {["queued", "sending"].includes(
+                                delivery.status,
+                              ) ? (
+                                <button
+                                  type="button"
+                                  className="rounded-full bg-white/5 px-3 py-1.5 text-xs font-medium text-white/75 transition hover:bg-white/10"
+                                  onClick={() =>
+                                    cancelOutboundDelivery(delivery.id)
+                                  }
+                                  disabled={
+                                    cancelingOutboundDeliveryId === delivery.id
+                                  }
+                                >
+                                  {cancelingOutboundDeliveryId === delivery.id
+                                    ? "Canceling"
+                                    : "Cancel"}
+                                </button>
+                              ) : null}
+
+                              {delivery.status === "failed" ||
+                              delivery.status === "canceled" ? (
+                                <button
+                                  type="button"
+                                  className="rounded-full bg-brand-500 px-3 py-1.5 text-xs font-semibold text-[#10251a]"
+                                  onClick={() =>
+                                    retryOutboundDelivery(delivery.id)
+                                  }
+                                  disabled={
+                                    retryingOutboundDeliveryId === delivery.id
+                                  }
+                                >
+                                  {retryingOutboundDeliveryId === delivery.id
+                                    ? "Retrying"
+                                    : "Retry"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                          {delivery.lastError ? (
+                            <p className="mt-2 text-[11px] leading-5 text-red-200/80">
+                              {delivery.lastError}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+
+                    {!outboundDeliveries.length && !outboundDeliveriesLoading ? (
+                      <div className="rounded-[18px] bg-[#2e2f2f] p-4 text-xs text-white/45">
+                        No outbound delivery jobs yet.
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               )}

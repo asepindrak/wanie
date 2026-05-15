@@ -121,6 +121,7 @@ export default function CrmPage() {
     upsertChat,
     upsertSession,
     updateMessageStatus,
+    updateMessageDelivery,
     setSocket,
     socket,
     chats,
@@ -293,6 +294,15 @@ export default function CrmPage() {
     socketClient.on("message_status_update", (payload) => {
       updateMessageStatus(payload);
     });
+    socketClient.on("outbound_delivery_update", (payload) => {
+      const delivery = payload?.delivery;
+      if (delivery?.messageId) {
+        updateMessageDelivery(delivery);
+      }
+      if (delivery?.status === "failed") {
+        loadAutomationLogs(delivery.message?.chatId || null);
+      }
+    });
     socketClient.on("crm_activity_update", (payload) => {
       if (payload?.chatId) {
         loadAutomationLogs(payload.chatId);
@@ -308,6 +318,7 @@ export default function CrmPage() {
     setSocket,
     token,
     loadAutomationLogs,
+    updateMessageDelivery,
     updateMessageStatus,
     upsertChat,
     upsertSession,

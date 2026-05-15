@@ -2,13 +2,25 @@ const { prisma } = require("../database/client");
 const chatService = require("./chat-service");
 const TelegramService = require("./telegram-service");
 
-const DEFAULT_MAX_ATTEMPTS = 5;
-const DEFAULT_WORKER_INTERVAL_MS = 5000;
-const BACKOFF_MS = [10000, 30000, 60000, 180000, 300000];
+const DEFAULT_MAX_ATTEMPTS = Math.max(
+  1,
+  Number(process.env.OUTBOUND_DELIVERY_MAX_ATTEMPTS || 5),
+);
+const DEFAULT_WORKER_INTERVAL_MS = Math.max(
+  1000,
+  Number(process.env.OUTBOUND_DELIVERY_WORKER_INTERVAL_MS || 5000),
+);
+const BACKOFF_MS = String(
+  process.env.OUTBOUND_DELIVERY_BACKOFF_MS || "10000,30000,60000,180000,300000",
+)
+  .split(",")
+  .map((item) => Number(item.trim()))
+  .filter((item) => Number.isFinite(item) && item >= 0);
 const activeJobs = new Set();
 
 let workerTimer = null;
 let workerContext = null;
+let cleanupTimer = null;
 
 function userRoom(userId) {
   return `user:${userId}`;
@@ -16,7 +28,7 @@ function userRoom(userId) {
 
 function serializeJob(job) {
   if (!job) return null;
-  return {
+  const serialized = {
     id: job.id,
     userId: job.userId,
     messageId: job.messageId,
@@ -30,6 +42,33 @@ function serializeJob(job) {
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
   };
+
+  if (Object.prototype.hasOwnProperty.call(job, "message")) {
+    serialized.message = job.message
+      ? {
+          id: job.message.id,
+          chatId: job.message.chatId,
+          receiver: job.message.receiver,
+          body: job.message.body,
+          type: job.message.type,
+          createdAt: job.message.createdAt,
+          chat: job.message.chat
+            ? {
+                id: job.message.chat.id,
+                title: job.message.chat.title,
+                contact: job.message.chat.contact
+                  ? {
+                      displayName: job.message.chat.contact.displayName,
+                      externalId: job.message.chat.contact.externalId,
+                    }
+                  : null,
+              }
+            : null,
+        }
+      : null;
+  }
+
+  return serialized;
 }
 
 function emitJobUpdate(io, job) {
@@ -46,6 +85,7 @@ function resolveTransport(message) {
 }
 
 function getBackoffMs(attempts) {
+  if (!BACKOFF_MS.length) return 30000;
   const index = Math.max(0, Math.min(attempts - 1, BACKOFF_MS.length - 1));
   return BACKOFF_MS[index];
 }
@@ -143,7 +183,12 @@ async function processJob(jobOrId, { sessionManager, io } = {}) {
       },
     });
 
-    if (!job || job.status === "delivered" || job.status === "failed") {
+    if (
+      !job ||
+      job.status === "delivered" ||
+      job.status === "failed" ||
+      job.status === "canceled"
+    ) {
       return job;
     }
 
@@ -184,6 +229,13 @@ async function processJob(jobOrId, { sessionManager, io } = {}) {
     } catch (error) {
       const nextAttempts = job.attempts + 1;
       const finalFailure = nextAttempts >= job.maxAttempts;
+      const latest = await prisma.outboundDeliveryJob.findUnique({
+        where: { id: job.id },
+      });
+      if (latest?.status === "canceled") {
+        emitJobUpdate(io, latest);
+        return latest;
+      }
       const failedJob = await prisma.outboundDeliveryJob.update({
         where: { id: job.id },
         data: {
@@ -313,6 +365,9 @@ async function retryJob(userId, jobId, { sessionManager, io } = {}) {
   if (!job) {
     throw new Error("Outbound delivery job was not found.");
   }
+  if (job.status === "delivered") {
+    throw new Error("Delivered messages cannot be retried.");
+  }
 
   const resetJob = await prisma.outboundDeliveryJob.update({
     where: { id: job.id },
@@ -328,6 +383,85 @@ async function retryJob(userId, jobId, { sessionManager, io } = {}) {
   return processJob(resetJob.id, { sessionManager, io });
 }
 
+async function cancelJob(userId, jobId, { io } = {}) {
+  const job = await prisma.outboundDeliveryJob.findFirst({
+    where: { id: jobId, userId },
+  });
+  if (!job) {
+    throw new Error("Outbound delivery job was not found.");
+  }
+  if (job.status === "delivered") {
+    throw new Error("Delivered messages cannot be canceled.");
+  }
+
+  const canceled = await prisma.outboundDeliveryJob.update({
+    where: { id: job.id },
+    data: {
+      status: "canceled",
+      lastError: null,
+      nextAttemptAt: new Date(),
+    },
+  });
+  emitJobUpdate(io, canceled);
+  return canceled;
+}
+
+async function cleanupOldJobs({
+  deliveredRetentionDays = Number(
+    process.env.OUTBOUND_DELIVERY_DELIVERED_RETENTION_DAYS || 30,
+  ),
+  terminalRetentionDays = Number(
+    process.env.OUTBOUND_DELIVERY_TERMINAL_RETENTION_DAYS || 90,
+  ),
+} = {}) {
+  const now = Date.now();
+  const deliveredCutoff = new Date(
+    now - Math.max(1, deliveredRetentionDays) * 24 * 60 * 60 * 1000,
+  );
+  const terminalCutoff = new Date(
+    now - Math.max(1, terminalRetentionDays) * 24 * 60 * 60 * 1000,
+  );
+
+  const [delivered, terminal] = await Promise.all([
+    prisma.outboundDeliveryJob.deleteMany({
+      where: {
+        status: "delivered",
+        updatedAt: { lt: deliveredCutoff },
+      },
+    }),
+    prisma.outboundDeliveryJob.deleteMany({
+      where: {
+        status: { in: ["failed", "canceled"] },
+        updatedAt: { lt: terminalCutoff },
+      },
+    }),
+  ]);
+
+  return {
+    delivered: delivered.count,
+    terminal: terminal.count,
+  };
+}
+
+function startCleanupWorker() {
+  if (cleanupTimer) return;
+  cleanupOldJobs().catch((error) => {
+    console.error("Outbound delivery cleanup failed:", error);
+  });
+  cleanupTimer = setInterval(() => {
+    cleanupOldJobs().catch((error) => {
+      console.error("Outbound delivery cleanup failed:", error);
+    });
+  }, 60 * 60 * 1000);
+  if (cleanupTimer.unref) cleanupTimer.unref();
+}
+
+function stopCleanupWorker() {
+  if (!cleanupTimer) return;
+  clearInterval(cleanupTimer);
+  cleanupTimer = null;
+}
+
 module.exports = {
   DEFAULT_MAX_ATTEMPTS,
   enqueueMessage,
@@ -337,5 +471,9 @@ module.exports = {
   stopWorker,
   listJobs,
   retryJob,
+  cancelJob,
+  cleanupOldJobs,
+  startCleanupWorker,
+  stopCleanupWorker,
   serializeJob,
 };

@@ -10,6 +10,7 @@ const { createApp } = require("./express/create-app");
 const chatService = require("./services/chat-service");
 const crmAutoReplyService = require("./services/crm-auto-reply-service");
 const outboundDeliveryService = require("./services/outbound-delivery-service");
+const webhookService = require("./services/webhook-service");
 const sessionService = require("./services/session-service");
 const { registerSocketHandlers, userRoom } = require("./socket/register");
 const { ensureRuntimeDirs, webDir } = require("./utils/paths");
@@ -166,12 +167,13 @@ async function startOpenWA({ dev = false } = {}) {
   // make io available to express routes via req.app.get('io')
   app.set("io", io);
   outboundDeliveryService.startWorker({ sessionManager, io });
+  outboundDeliveryService.startCleanupWorker();
+  webhookService.startWorker({ io });
+  webhookService.startCleanupWorker();
 
   sessionManager.on("session-status", (payload) => {
     io.to(userRoom(payload.userId)).emit("session_status_update", payload);
   });
-
-  const { notifyWebhook } = require("./services/webhook-service");
 
   sessionManager.on("incoming-message", async (payload) => {
     try {
@@ -181,7 +183,7 @@ async function startOpenWA({ dev = false } = {}) {
 
       // Fire user-configured webhook (best-effort)
       try {
-        await notifyWebhook(payload.userId, {
+        await webhookService.notifyWebhook(payload.userId, {
           chat: result.chat,
           message: result.message,
         });
@@ -232,6 +234,7 @@ async function startOpenWA({ dev = false } = {}) {
   const reconnectableSessions =
     await sessionService.listReconnectableSessions();
   await sessionManager.hydrate(reconnectableSessions);
+  sessionManager.startHealthCheckWorker();
 
   console.log("OpenWA is running 🚀\n");
   console.log(`Dashboard: ${config.frontendUrl}`);
@@ -253,6 +256,10 @@ async function startOpenWA({ dev = false } = {}) {
     console.log("\n[OpenWA] Shutting down gracefully...");
     try {
       outboundDeliveryService.stopWorker();
+      outboundDeliveryService.stopCleanupWorker();
+      webhookService.stopWorker();
+      webhookService.stopCleanupWorker();
+      sessionManager.stopHealthCheckWorker();
       await TelegramService.stopAll();
     } catch (e) {}
     process.exit(0);
