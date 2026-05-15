@@ -63,6 +63,50 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Message timestamps
 - Sender and receiver information
 
+## CRM AI Automation
+
+- Dedicated CRM dashboard for customer support workflows
+- Global CRM automation mode: off, draft only, or auto send
+- Per-chat automation mode overrides
+- Per-session automation mode overrides for WhatsApp sessions
+- AI draft generation from recent conversation context
+- AI auto-reply for inbound customer messages
+- Knowledge-base grounded responses using uploaded documents
+- Conversation-aware prompts with recent message transcript
+- Multi-message debounce before auto-reply so rapid follow-up messages are answered as one context
+- Retry handling for AI generation and outbound message delivery
+- Fallback message delivery when AI generation fails
+- Abuse-rate guard for excessive inbound message bursts
+- Abuse cooldown notice sent back to the customer on WhatsApp or Telegram
+- Daily maximum auto-reply limit per chat
+- CRM automation activity logs for sent replies, generated drafts, skips, and errors
+- Source snippets stored with automation logs for traceability
+- Persona and brand voice configuration
+- Fallback message configuration
+- Knowledge similarity threshold, maximum chunks, and embedding model settings
+
+## CRM Knowledge Base
+
+- Upload knowledge documents from the CRM page
+- Supported plain-text knowledge files: TXT, Markdown, CSV, and JSON
+- Supported office files: PDF, DOCX, and XLSX
+- CSV knowledge extraction with row/column labels for easier AI retrieval
+- Document status tracking: processing, ready, and failed
+- Knowledge chunking and indexing
+- Reindex existing knowledge documents after configuration or parser changes
+- Keyword retrieval fallback when embeddings are not configured
+- Optional embedding-based retrieval when an embedding provider is configured
+- Knowledge test chat for validating answers before enabling auto-reply
+
+## Telegram CRM Channel
+
+- Telegram bot can receive customer messages as CRM chats
+- Telegram customer messages are stored in the same chat/message database
+- Telegram CRM chats support AI draft and auto-reply modes
+- Outbound CRM messages can be delivered back to Telegram
+- Admin Telegram chat IDs remain reserved for remote OpenWA assistant control
+- Non-admin Telegram chat IDs are treated as customer CRM conversations
+
 ## Media
 
 - Multipart media file upload
@@ -100,6 +144,7 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Multi-user support
 - Multi-session support per user
 - Remote OpenWA control via Telegram bot with admin allowlist and `/new` chat reset support
+- CRM workspace with AI auto-reply, knowledge base, Telegram customer channel support, and automation logs
 - Dark theme UI
 - Search functionality across messages, chats, and contacts
 - Message grouping (consecutive images)

@@ -8,6 +8,8 @@ OpenWA is a self-hosted WhatsApp workspace that ships as a CLI package. It combi
 
 OpenWA is also designed to be **AI-agent-ready**. The runtime exposes agent-friendly documentation, machine-readable OpenAPI output, and API key authentication so AI agents and automation tools can discover capabilities and interact with the workspace without reverse-engineering the app.
 
+OpenWA also includes a **CRM AI workspace** for customer support automation. You can upload knowledge-base documents, generate AI drafts, enable guarded auto-replies, and serve both WhatsApp and Telegram customer conversations from the same dashboard.
+
 ## Disclaimer
 
 OpenWA is an independent open source project. It is **not** an official WhatsApp product and is **not** affiliated with, endorsed by, or sponsored by Meta or WhatsApp.
@@ -23,6 +25,11 @@ If you use OpenWA with WhatsApp, make sure your usage complies with the terms, p
 - Message APIs for listing, searching, sending, forwarding, and deleting messages.
 - Multipart media upload flow with `mediaFileId` support for outbound media messages.
 - Runtime docs endpoints for Swagger UI, OpenAPI JSON, agent README, health checks, and version metadata.
+- CRM AI workspace with draft generation, auto-reply, knowledge-base search, automation logs, and safety guards.
+- Knowledge-base uploads for Markdown, CSV, TXT, JSON, PDF, DOCX, and XLSX files, with reindex support.
+- Telegram customer channel support: non-admin Telegram bot chats can enter the CRM and receive AI replies.
+- Debounced CRM auto-replies that combine rapid follow-up customer messages before answering.
+- Abuse cooldown and daily reply limits to reduce spam and runaway automation.
 - Dual authentication model:
   - JWT bearer auth for dashboard users.
   - API key auth for agents and external integrations.
@@ -46,6 +53,46 @@ If you use OpenWA with WhatsApp, make sure your usage complies with the terms, p
 - Restrict bot control to specific Telegram chat IDs with admin allowlist support.
 - Use `/new` from Telegram to start a fresh assistant chat context.
 - Monitor the bot status via the assistant tool `get_telegram_bot_status`.
+- Use the same bot as a CRM customer channel: Telegram chat IDs not listed in the admin allowlist are treated as customer conversations.
+- Customer Telegram messages are stored as CRM chats and can receive AI draft or auto-reply responses grounded in the CRM knowledge base.
+
+## CRM AI Workspace
+
+OpenWA includes a CRM page for support teams that want AI-assisted replies grounded in uploaded knowledge. The CRM works with regular WhatsApp chats and with Telegram customer chats created through the Telegram bot integration.
+
+### CRM automation modes
+
+- **Off** — no AI automation for the chat.
+- **Draft only** — generate a suggested reply and save it in CRM activity without sending it automatically.
+- **Auto send** — generate and deliver the reply automatically to WhatsApp or Telegram.
+
+Automation can be configured globally, overridden per WhatsApp session, and overridden per individual chat. Chat-level settings take priority over session settings, and session settings take priority over the global default.
+
+### Knowledge base
+
+CRM replies are grounded in uploaded knowledge documents. Supported file types include:
+
+- Markdown (`.md`)
+- CSV
+- TXT
+- JSON
+- PDF
+- DOCX
+- XLSX
+
+CSV files are converted into row/column-labeled text so service data such as `Nama Layanan`, `Harga Dasar`, and `Durasi (mnt)` can be retrieved reliably. Existing documents can be reindexed from the CRM page after parser changes, embedding configuration changes, or updated source files.
+
+### Auto-reply behavior
+
+- OpenWA waits briefly after the latest inbound message before generating a CRM auto-reply, so rapid messages like `halo`, `harga berapa`, and `bisa order sekarang` are answered as one context.
+- AI generation and outbound delivery are retried a few times for transient provider or network failures.
+- If AI generation still fails, OpenWA sends the configured CRM fallback message.
+- Normal follow-up questions are still answered until the daily per-chat reply limit is reached.
+- Abuse protection starts only when a chat sends too many inbound messages in a short window. During abuse cooldown, OpenWA skips expensive AI work and sends a short notice to the customer.
+
+### CRM activity logs
+
+CRM activity records generated drafts, auto-sent replies, skipped replies, delivery failures, fallback use, and source snippets used for the answer. This makes it easier to audit why a customer received a specific response.
 
 ## Tech stack
 
@@ -188,6 +235,7 @@ If `OPENWA_JWT_SECRET` is not set, the first `openwa` run will prompt you to ent
 6. Pair the device and wait for the workspace to sync chats and contacts.
 7. Send text or media from the dashboard or the HTTP API.
 8. Create an API key from **Settings → API Access** for agents or external integrations.
+9. Optional: open **CRM**, upload knowledge documents, test knowledge answers, then enable draft or auto-send mode.
 
 ## AI Assistant Capabilities
 
@@ -370,6 +418,30 @@ Returns the initial workspace payload, including the current user, sessions, cha
 
 Upload a file first, then use the returned `mediaFileId` when calling the send message endpoint.
 
+### CRM
+
+- `GET /api/crm/settings`
+- `POST /api/crm/settings`
+- `POST /api/crm/persona/generate`
+- `POST /api/crm/sessions/{sessionId}/settings`
+- `POST /api/crm/chats/{chatId}/settings`
+- `POST /api/crm/chats/{chatId}/draft`
+- `GET /api/crm/logs`
+
+CRM settings include automation mode, persona, fallback message, knowledge retrieval settings, abuse cooldown, and daily reply limits.
+
+### Knowledge
+
+- `GET /api/knowledge/documents`
+- `POST /api/knowledge/documents`
+- `DELETE /api/knowledge/documents/{documentId}`
+- `POST /api/knowledge/documents/{documentId}/reindex`
+- `GET /api/knowledge/documents/{documentId}/chunks`
+- `POST /api/knowledge/search`
+- `POST /api/knowledge/test-chat`
+
+Use reindex when source parsing or embedding settings change. Reindexing extracts the stored file again and rebuilds chunks.
+
 ## API authentication
 
 OpenWA supports two main authentication modes.
@@ -507,6 +579,9 @@ curl -X POST http://localhost:55111/api/agent/invoke-tool/weather-api \
 
 - `server/services/agent-orchestrator.js` - Orchestrates agent workflow and tool execution.
 - `server/services/agent-service.js` - Handles assistant chat messages and tool invocation.
+- `server/services/crm-auto-reply-service.js` - Generates CRM drafts, runs guarded auto-replies, and delivers CRM messages to WhatsApp or Telegram.
+- `server/services/crm-service.js` - Stores CRM automation settings, per-chat/session overrides, and automation logs.
+- `server/services/knowledge-service.js` - Extracts, chunks, indexes, searches, and reindexes CRM knowledge documents.
 - `server/services/tool-executor.js` - Executes assistant tools and external integrations.
 - `server/services/llm-service.js` - LLM provider abstraction and model selection.
 - `server/services/assistant-service.js` - Manages assistant profiles and configurations.
