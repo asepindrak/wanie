@@ -11,6 +11,8 @@ const defaultSettings = {
   maxChunks: 6,
   cooldownSeconds: 90,
   maxAutoRepliesPerChatPerDay: 20,
+  persona:
+    "Ramah, jelas, profesional, dan membantu. Gunakan Bahasa Indonesia natural.",
   fallbackMessage: "Terima kasih, pesan Anda akan dibantu admin kami.",
 };
 
@@ -69,6 +71,7 @@ function serializeSettings(global, sessionRows, chatRows) {
         maxChunks: global.maxChunks,
         cooldownSeconds: global.cooldownSeconds,
         maxAutoRepliesPerChatPerDay: global.maxAutoRepliesPerChatPerDay,
+        persona: global.persona,
         fallbackMessage: global.fallbackMessage,
       }
     : {};
@@ -150,6 +153,10 @@ async function updateSettings(userId, payload = {}) {
 
   if (payload.fallbackMessage !== undefined) {
     data.fallbackMessage = String(payload.fallbackMessage || "").trim();
+  }
+
+  if (payload.persona !== undefined) {
+    data.persona = String(payload.persona || "").trim() || null;
   }
 
   if (Object.keys(data).length > 0) {

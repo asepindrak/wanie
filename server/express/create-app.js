@@ -888,6 +888,34 @@ function createApp({ config, sessionManager }) {
   );
 
   app.post(
+    "/api/crm/persona/generate",
+    requireAuth,
+    withAsync(async (req, res) => {
+      const input = String(req.body?.input || "").trim();
+      if (!input) return res.status(400).json({ error: "input is required." });
+
+      const result = await llmService.generate(req.user.id, {
+        temperature: 0.3,
+        messages: [
+          {
+            role: "user",
+            content: [
+              "Create a concise CRM auto-reply persona and brand voice instruction in Indonesian.",
+              "The result will be inserted into a system prompt for WhatsApp customer support.",
+              "Return only the persona instruction, no title, no markdown.",
+              "Include tone, greeting style, boundaries, and what the AI must not invent.",
+              "",
+              `User input: ${input}`,
+            ].join("\n"),
+          },
+        ],
+      });
+
+      res.json({ persona: String(result?.text || "").trim() });
+    }, 400),
+  );
+
+  app.post(
     "/api/crm/sessions/:sessionId/settings",
     requireAuth,
     withAsync(async (req, res) => {

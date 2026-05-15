@@ -37,6 +37,8 @@ const defaultCrmSettings = {
   maxChunks: 6,
   cooldownSeconds: 90,
   maxAutoRepliesPerChatPerDay: 20,
+  persona:
+    "Ramah, jelas, profesional, dan membantu. Gunakan Bahasa Indonesia natural.",
   fallbackMessage: "Terima kasih, pesan Anda akan dibantu admin kami.",
   sessionModes: {},
   chatModes: {},
@@ -50,6 +52,33 @@ function formatTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function initials(name) {
+  return String(name || "?")
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function CrmAvatar({ src, label }) {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={label}
+        className="h-12 w-12 shrink-0 rounded-2xl object-cover"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#2e2f2f] text-sm font-semibold text-white">
+      {initials(label)}
+    </div>
+  );
 }
 
 function previewText(chat) {
@@ -122,6 +151,8 @@ export default function CrmPage() {
   const [knowledgeChatAnswer, setKnowledgeChatAnswer] = useState("");
   const [knowledgeChatSources, setKnowledgeChatSources] = useState([]);
   const [knowledgeChatLoading, setKnowledgeChatLoading] = useState(false);
+  const [personaInput, setPersonaInput] = useState("");
+  const [personaGenerating, setPersonaGenerating] = useState(false);
   const [automationLogs, setAutomationLogs] = useState([]);
 
   const activeChat = useMemo(
@@ -454,6 +485,28 @@ export default function CrmPage() {
     }
   }
 
+  async function generatePersona() {
+    const input = (personaInput || settings.persona || "").trim();
+    if (!input) return;
+
+    setPersonaGenerating(true);
+    setError("");
+    try {
+      const data = await apiFetch("/api/crm/persona/generate", {
+        method: "POST",
+        token,
+        body: { input },
+      });
+      const persona = data.persona || input;
+      setSettings((current) => ({ ...current, persona }));
+      await saveCrmSettingsPatch({ persona });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setPersonaGenerating(false);
+    }
+  }
+
   async function generateDraft() {
     if (!activeChat) {
       setDraft("Belum ada pesan customer yang bisa dijadikan konteks.");
@@ -520,7 +573,7 @@ export default function CrmPage() {
       />
 
       <main className="min-h-screen bg-[#111b21] text-white">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 bg-[#161717] px-5 py-4">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 bg-[#161717] px-5 py-4">
           <div className="flex items-center gap-3">
             <BrandLogo variant="square" className="h-10 w-10 rounded-xl" />
             <div>
@@ -555,14 +608,14 @@ export default function CrmPage() {
         </header>
 
         {error ? (
-          <div className="mx-5 mt-4 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <div className="mx-5 mt-4 rounded-2xl border border-red-400/15 bg-red-500/10 px-4 py-3 text-sm text-red-100">
             {error}
           </div>
         ) : null}
 
         <section className="grid min-h-[calc(100vh-73px)] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)_360px]">
-          <aside className="border-b border-white/8 bg-[#161717] lg:border-b-0 lg:border-r">
-            <div className="border-b border-white/8 p-4">
+          <aside className="border-b border-white/5 bg-[#161717] lg:border-b-0 lg:border-r">
+            <div className="border-b border-white/5 p-4">
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-[18px] bg-[#242626] p-3">
                   <p className="text-[11px] text-white/40">Inbox</p>
@@ -593,43 +646,65 @@ export default function CrmPage() {
               </div>
             </div>
 
-            <div className="max-h-[55vh] overflow-y-auto lg:max-h-[calc(100vh-238px)]">
-              {filteredChats.map((chat) => {
-                const selected = chat.id === activeChatId;
-                const mode = resolveChatMode(settings, chat);
-                return (
-                  <button
-                    key={chat.id}
-                    type="button"
-                    className={`block w-full border-b border-white/6 px-4 py-3 text-left transition ${
-                      selected ? "bg-brand-500/12" : "hover:bg-white/[0.04]"
-                    }`}
-                    onClick={() => setActiveChat(chat.id)}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-white">
-                          {chat.contact?.displayName || chat.title}
-                        </p>
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/45">
-                          {previewText(chat)}
-                        </p>
+            <div className="max-h-[55vh] overflow-y-auto px-3 py-3 lg:max-h-[calc(100vh-238px)]">
+              <div className="space-y-2">
+                {filteredChats.map((chat) => {
+                  const selected = chat.id === activeChatId;
+                  const mode = resolveChatMode(settings, chat);
+                  const title = chat.contact?.displayName || chat.title;
+                  return (
+                    <button
+                      key={chat.id}
+                      type="button"
+                      className={
+                        "flex w-full items-start gap-3 rounded-[16px] px-4 py-3 text-left transition " +
+                        (selected
+                          ? "bg-[#2e2f2f]"
+                          : "bg-transparent hover:bg-white/[0.05]")
+                      }
+                      onClick={() => setActiveChat(chat.id)}
+                    >
+                      <CrmAvatar src={chat.contact?.avatarUrl} label={title} />
+                      <div className="min-w-0 flex-1">
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3">
+                          <h3 className="min-w-0 truncate font-medium text-white">
+                            {title}
+                          </h3>
+                          <div className="flex w-[76px] shrink-0 items-center justify-end gap-2">
+                            <span className="block min-w-0 truncate text-[11px] text-white/35">
+                              {formatTime(
+                                chat.contact?.lastMessageAt || chat.updatedAt,
+                              )}
+                            </span>
+                          </div>
+                          <p className="mt-1 min-w-0 truncate text-sm text-white/42">
+                            {previewText(chat)}
+                          </p>
+                          <div className="mt-1 flex w-[76px] shrink-0 justify-end">
+                            {chat.contact?.unreadCount ? (
+                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-500 px-1.5 text-[11px] font-bold text-[#10251a]">
+                                {chat.contact.unreadCount}
+                              </span>
+                            ) : (
+                              <span
+                                className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
+                                  mode === "auto"
+                                    ? "bg-brand-500/15 text-brand-100"
+                                    : mode === "draft"
+                                      ? "bg-amber-500/15 text-amber-100"
+                                      : "bg-white/8 text-white/45"
+                                }`}
+                              >
+                                {mode}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
-                          mode === "auto"
-                            ? "bg-brand-500/15 text-brand-100"
-                            : mode === "draft"
-                              ? "bg-amber-500/15 text-amber-100"
-                              : "bg-white/8 text-white/45"
-                        }`}
-                      >
-                        {mode}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })}
+              </div>
 
               {!filteredChats.length ? (
                 <div className="p-6 text-sm leading-6 text-white/45">
@@ -640,7 +715,7 @@ export default function CrmPage() {
           </aside>
 
           <section className="min-w-0 bg-[#0f1418]">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 px-5 py-4">
               <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
                   Conversation
@@ -712,8 +787,8 @@ export default function CrmPage() {
             </div>
           </section>
 
-          <aside className="border-t border-white/8 bg-[#161717] lg:border-l lg:border-t-0">
-            <div className="flex border-b border-white/8 px-3 pt-3">
+          <aside className="border-t border-white/5 bg-[#161717] lg:border-l lg:border-t-0">
+            <div className="flex border-b border-white/5 px-3 pt-3">
               {[
                 ["inbox", "Reply"],
                 ["knowledge", "Knowledge"],
@@ -1226,6 +1301,43 @@ export default function CrmPage() {
                         "maxAutoRepliesPerChatPerDay",
                         event.target.value,
                       )
+                    }
+                  />
+                  <label className="mt-3 block text-xs text-white/45">
+                    Persona / brand voice
+                  </label>
+                  <div className="mt-2 rounded-2xl bg-[#111b21] p-3">
+                    <textarea
+                      className="min-h-20 w-full rounded-xl bg-[#242626] px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/30"
+                      placeholder="Tulis input singkat: brand kamu seperti apa, gaya bahasa, panggilan customer, batasan jawaban..."
+                      value={personaInput}
+                      onChange={(event) => setPersonaInput(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="mt-2 w-full rounded-2xl bg-amber-400 px-4 py-2 text-sm font-semibold text-[#1d1600] shadow-[0_0_18px_rgba(251,191,36,0.28)] transition hover:bg-amber-300 disabled:opacity-60"
+                      onClick={generatePersona}
+                      disabled={personaGenerating}
+                    >
+                      {personaGenerating
+                        ? "Generating persona..."
+                        : "Generate persona from input"}
+                    </button>
+                  </div>
+                  <textarea
+                    className="mt-2 min-h-28 w-full rounded-2xl bg-[#111b21] px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/30"
+                    placeholder="Contoh: Ramah, cepat, tidak terlalu formal, panggil customer dengan Kak, jangan membuat janji stok/harga jika tidak ada di knowledge."
+                    value={settings.persona || ""}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        persona: event.target.value,
+                      }))
+                    }
+                    onBlur={(event) =>
+                      saveCrmSettingsPatch({
+                        persona: event.target.value,
+                      })
                     }
                   />
                   <label className="mt-3 block text-xs text-white/45">

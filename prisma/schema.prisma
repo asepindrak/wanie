@@ -266,6 +266,7 @@ model CrmAiSetting {
   maxChunks                   Int      @default(6)
   cooldownSeconds             Int      @default(90)
   maxAutoRepliesPerChatPerDay Int      @default(20)
+  persona                     String?
   fallbackMessage             String   @default("Terima kasih, pesan Anda akan dibantu admin kami.")
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt

@@ -27,6 +27,7 @@ function buildPrompt({ chat, messages, snippets, settings }) {
 
   return [
     "You are a CRM assistant replying to a WhatsApp customer in Indonesian.",
+    `Persona and brand voice: ${settings.persona || "Ramah, jelas, profesional, dan membantu."}`,
     "Answer only using the provided knowledge snippets and conversation context.",
     "If the knowledge is insufficient, use the fallback message and do not invent details.",
     "",
@@ -104,6 +105,7 @@ async function testKnowledgeChat(userId, question) {
         role: "user",
         content: [
           "You are testing a CRM knowledge base.",
+          `Persona and brand voice: ${settings.persona || "Ramah, jelas, profesional, dan membantu."}`,
           "Answer in Indonesian using only the provided knowledge snippets.",
           "If the snippets are insufficient, say that the knowledge base does not contain enough information.",
           "",
