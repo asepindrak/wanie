@@ -27,15 +27,15 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.openwa.rule=Host(`openwa.commitflow.space`)"
       - "traefik.http.routers.openwa.entrypoints=websecure"
-      - "traefik.http.routers.openwa.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.openwa.tls=true"
       - "traefik.http.services.openwa.loadbalancer.server.port=55111"
 
     networks:
-      - traefik
+      - coolify
 
 volumes:
   openwa-storage:
 
 networks:
-  traefik:
+  coolify:
     external: true
