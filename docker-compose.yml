@@ -9,8 +9,6 @@ services:
     container_name: openwa
     env_file:
       - .env
-    ports:
-      - "55111:55111"
     environment:
       HOST: "${HOST}"
       FE_PORT: "${FE_PORT}"
