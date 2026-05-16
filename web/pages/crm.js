@@ -16,6 +16,7 @@ import {
 } from "react-icons/md";
 import { AppHead } from "@/components/AppHead";
 import { BrandLogo } from "@/components/BrandLogo";
+import { ChatChannelBadge } from "@/components/ChatChannelBadge";
 import { apiFetch } from "@/lib/api";
 import { createSocket } from "@/lib/socket";
 import { useAppStore } from "@/store/useAppStore";
@@ -150,6 +151,7 @@ export default function CrmPage() {
   const [draftSources, setDraftSources] = useState([]);
   const [draftBusy, setDraftBusy] = useState(false);
   const [sending, setSending] = useState(false);
+  const [resumingAutoReply, setResumingAutoReply] = useState(false);
   const [settings, setSettings] = useState(defaultCrmSettings);
   const [knowledgeDocs, setKnowledgeDocs] = useState([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
@@ -388,6 +390,27 @@ export default function CrmPage() {
 
   async function updateChatMode(chatId, value) {
     await saveCrmSettingsPatch({ chatModes: { [chatId]: value } });
+  }
+
+  async function resumeActiveChatAutoReply() {
+    if (!activeChat || !token) return;
+    setResumingAutoReply(true);
+    setError("");
+    try {
+      const data = await apiFetch(
+        `/api/crm/chats/${activeChat.id}/resume-auto-reply`,
+        {
+          method: "POST",
+          token,
+        },
+      );
+      setSettings({ ...defaultCrmSettings, ...(data.settings || {}) });
+      await loadAutomationLogs(activeChat.id);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setResumingAutoReply(false);
+    }
   }
 
   async function updateNumberSetting(key, value) {
@@ -696,9 +719,12 @@ export default function CrmPage() {
                       <CrmAvatar src={chat.contact?.avatarUrl} label={title} />
                       <div className="min-w-0 flex-1">
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3">
-                          <h3 className="min-w-0 truncate font-medium text-white">
-                            {title}
-                          </h3>
+                          <div className="flex min-w-0 items-center gap-2">
+                            <h3 className="min-w-0 truncate font-medium text-white">
+                              {title}
+                            </h3>
+                            <ChatChannelBadge chat={chat} compact />
+                          </div>
                           <div className="flex w-[76px] shrink-0 items-center justify-end gap-2">
                             <span className="block min-w-0 truncate text-[11px] text-white/35">
                               {formatTime(
@@ -756,9 +782,12 @@ export default function CrmPage() {
                 </h2>
               </div>
               {activeChat ? (
-                <div className="flex items-center gap-2 rounded-2xl bg-[#242626] px-3 py-2 text-xs text-white/60">
-                  <MdBolt className="text-brand-200" />
-                  {modeLabel(effectiveMode)}
+                <div className="flex items-center gap-2">
+                  <ChatChannelBadge chat={activeChat} />
+                  <div className="flex items-center gap-2 rounded-2xl bg-[#242626] px-3 py-2 text-xs text-white/60">
+                    <MdBolt className="text-brand-200" />
+                    {modeLabel(effectiveMode)}
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -847,11 +876,14 @@ export default function CrmPage() {
                       <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
                         Customer
                       </p>
-                      <h3 className="mt-1 text-sm font-semibold text-white">
-                        {activeChat?.contact?.displayName ||
-                          activeChat?.title ||
-                          "No customer selected"}
-                      </h3>
+                      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+                        <h3 className="min-w-0 truncate text-sm font-semibold text-white">
+                          {activeChat?.contact?.displayName ||
+                            activeChat?.title ||
+                            "No customer selected"}
+                        </h3>
+                        {activeChat ? <ChatChannelBadge chat={activeChat} /> : null}
+                      </div>
                     </div>
                     <MdInfo className="text-xl text-white/30" />
                   </div>
@@ -1204,6 +1236,24 @@ export default function CrmPage() {
                       </p>
                     ) : null}
                   </div>
+                  {activeChat ? (
+                    <div className="mt-3 rounded-[18px] bg-brand-500/10 p-3">
+                      <p className="text-xs leading-5 text-brand-100/75">
+                        Clears the admin pause and sets this chat override to
+                        Auto send.
+                      </p>
+                      <button
+                        type="button"
+                        className="mt-3 w-full rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-[#10251a] transition hover:bg-brand-600 disabled:opacity-60"
+                        onClick={resumeActiveChatAutoReply}
+                        disabled={resumingAutoReply}
+                      >
+                        {resumingAutoReply
+                          ? "Activating auto-reply..."
+                          : "Activate auto-reply for this chat"}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="rounded-[22px] bg-[#242626] p-4">
@@ -1499,13 +1549,25 @@ export default function CrmPage() {
                       {activeChat ? "Current chat log" : "Recent CRM log"}
                     </h3>
                   </div>
-                  <button
-                    type="button"
-                    className="rounded-full bg-white/5 px-3 py-1.5 text-xs text-white/70"
-                    onClick={() => loadAutomationLogs(activeChat?.id || null)}
-                  >
-                    Refresh
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {activeChat ? (
+                      <button
+                        type="button"
+                        className="rounded-full bg-brand-500 px-3 py-1.5 text-xs font-semibold text-[#10251a] transition hover:bg-brand-600 disabled:opacity-60"
+                        onClick={resumeActiveChatAutoReply}
+                        disabled={resumingAutoReply}
+                      >
+                        {resumingAutoReply ? "Resuming..." : "Resume auto-reply"}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="rounded-full bg-white/5 px-3 py-1.5 text-xs text-white/70"
+                      onClick={() => loadAutomationLogs(activeChat?.id || null)}
+                    >
+                      Refresh
+                    </button>
+                  </div>
                 </div>
 
                 {automationLogs.map((log) => (

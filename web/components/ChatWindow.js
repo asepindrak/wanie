@@ -9,6 +9,10 @@ import {
 import { apiFetch, getApiBaseUrl } from "@/lib/api";
 import { useAppStore } from "@/store/useAppStore";
 import { ChatProfileModal } from "@/components/ChatProfileModal";
+import {
+  ChatChannelBadge,
+  getChatChannelLabel,
+} from "@/components/ChatChannelBadge";
 import { MessageMarkdown } from "@/components/MessageMarkdown";
 import { TerminalChatCard } from "@/components/TerminalChatCard";
 import { MessageActionMenu } from "./MessageActionMenu";
@@ -1147,13 +1151,16 @@ export const ChatWindow = forwardRef(function ChatWindow(
             label={chat.contact.displayName}
           />
           <div className="min-w-0">
-            <h2 className="truncate font-semibold text-white">
-              {chat.contact.displayName}
-            </h2>
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="truncate font-semibold text-white">
+                {chat.contact.displayName}
+              </h2>
+              <ChatChannelBadge chat={chat} compact />
+            </div>
             <p className="text-sm text-white/40">
               {effectiveTypingState?.isTyping
                 ? `${effectiveTypingState.name} is typing...`
-                : "WhatsApp chat synced locally"}
+                : `${getChatChannelLabel(chat)} chat synced locally`}
             </p>
           </div>
         </div>

@@ -1,8 +1,11 @@
 import { BrandLogo } from "@/components/BrandLogo";
+import { ChatChannelBadge } from "@/components/ChatChannelBadge";
 import { ConversationsSkeletonList } from "@/components/Skeletons";
 import { MdMoreVert } from "react-icons/md";
 import { useState } from "react";
 import { useEffect } from "react";
+
+const openwaVersion = process.env.NEXT_PUBLIC_OPENWA_VERSION || "";
 
 function formatTime(value) {
   if (!value) {
@@ -104,8 +107,13 @@ export function ContactList({
     <aside className="flex h-full w-[360px] shrink-0 flex-col bg-[#161717]">
       <div className="px-5 py-5">
         <div className="flex items-center justify-center">
-          <div className="h-12 flex items-center">
+          <div className="flex h-12 items-center gap-2">
             <BrandLogo variant="long" alt="OpenWA" className="h-full" />
+            {openwaVersion ? (
+              <span className="rounded-full bg-white/5 px-2 py-1 text-[11px] font-semibold text-white/45">
+                v{openwaVersion}
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -252,9 +260,12 @@ export function ContactList({
                 />
                 <div className="min-w-0 flex-1">
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3">
-                    <h3 className="min-w-0 truncate font-medium text-white">
-                      {chat.contact.displayName}
-                    </h3>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h3 className="min-w-0 truncate font-medium text-white">
+                        {chat.contact.displayName}
+                      </h3>
+                      <ChatChannelBadge chat={chat} compact />
+                    </div>
                     <div className="flex w-[76px] shrink-0 items-center justify-end gap-2">
                       <span className="block min-w-0 truncate text-[11px] text-white/35">
                         {formatTime(

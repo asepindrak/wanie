@@ -256,11 +256,50 @@ async function setChatMode(userId, chatId, mode) {
   await retryOnSqliteTimeout(() =>
     prisma.crmChatAiSetting.upsert({
       where: { userId_chatId: { userId, chatId } },
-      update: { mode: normalized },
+      update: {
+        mode: normalized,
+        ...(normalized === "auto"
+          ? { pausedUntil: null, pauseReason: null }
+          : {}),
+      },
       create: { userId, chatId, mode: normalized },
     }),
   );
   return { ok: true, mode: normalized };
+}
+
+async function resumeAutoReplyForChat(userId, chatId) {
+  const chat = await retryOnSqliteTimeout(() =>
+    prisma.chat.findFirst({ where: { id: chatId, userId } }),
+  );
+  if (!chat) throw new Error("Chat not found.");
+
+  await retryOnSqliteTimeout(() =>
+    prisma.crmChatAiSetting.upsert({
+      where: { userId_chatId: { userId, chatId } },
+      update: {
+        mode: "auto",
+        pausedUntil: null,
+        pauseReason: null,
+      },
+      create: {
+        userId,
+        chatId,
+        mode: "auto",
+        pausedUntil: null,
+        pauseReason: null,
+      },
+    }),
+  );
+
+  await createAutomationLog(userId, {
+    chatId,
+    mode: "auto",
+    action: "resumed",
+    reason: "manual",
+  });
+
+  return { ok: true, mode: "auto" };
 }
 
 async function pauseAutoReplyForChat(
@@ -500,6 +539,7 @@ module.exports = {
   updateSettings,
   setSessionMode,
   setChatMode,
+  resumeAutoReplyForChat,
   pauseAutoReplyForChat,
   getChatPause,
   resolveModeForChat,

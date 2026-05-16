@@ -1102,6 +1102,16 @@ function createApp({ config, sessionManager }) {
   );
 
   app.post(
+    "/api/crm/chats/:chatId/resume-auto-reply",
+    requireAuth,
+    withAsync(async (req, res) => {
+      await crmService.resumeAutoReplyForChat(req.user.id, req.params.chatId);
+      const settings = await crmService.getSettings(req.user.id);
+      res.json({ ok: true, settings });
+    }, 400),
+  );
+
+  app.post(
     "/api/crm/chats/:chatId/draft",
     requireAuth,
     withAsync(async (req, res) => {
