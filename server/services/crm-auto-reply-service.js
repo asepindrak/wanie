@@ -47,6 +47,15 @@ function isNoInboundTextError(error) {
   return /No inbound customer message found/i.test(String(error?.message || ""));
 }
 
+function sanitizeCustomerReply(text) {
+  return String(text || "")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi, "$2")
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$2")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .trim();
+}
+
 function resolveMediaFilePath(mediaFile) {
   const relativePath = String(mediaFile?.relativePath || "")
     .replace(/\\/g, "/")
@@ -204,6 +213,8 @@ function buildPrompt({ chat, messages, snippets, settings }) {
     `Persona and brand voice: ${settings.persona || "Ramah, jelas, profesional, dan membantu."}`,
     "Answer only using the provided knowledge snippets and conversation context.",
     "If the knowledge is insufficient, use the fallback message and do not invent details.",
+    "Do not use Markdown formatting in the final reply.",
+    "For links, write the plain URL only. Never use Markdown link syntax like [text](https://example.com).",
     "",
     `Customer: ${chat.contact?.displayName || chat.title}`,
     "",
@@ -375,7 +386,7 @@ async function generateDraft(userId, chatId, { inboundMessage } = {}) {
   });
 
   return {
-    draft: String(result?.text || settings.fallbackMessage).trim(),
+    draft: sanitizeCustomerReply(result?.text || settings.fallbackMessage),
     sources: snippets,
   };
 }
@@ -703,7 +714,7 @@ async function runAutoReply({
     }
 
     result = {
-      draft: fallbackDraft,
+      draft: sanitizeCustomerReply(fallbackDraft),
       sources: [],
       fallbackReason: error.message,
     };
