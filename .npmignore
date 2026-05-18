@@ -18,6 +18,7 @@ package-lock.json
 
 # Build artifacts
 web/out
+web/.next/cache/
 dist
 build
 
@@ -56,9 +57,13 @@ tsconfig.json
 next.config.js
 
 # Documentation and examples
+!README.md
 openwa_prompt.md
 DEPLOYMENT.md
 FEATURES.md
+
+# Design source files
+*.psd
 
 # IDE
 .DS_Store
