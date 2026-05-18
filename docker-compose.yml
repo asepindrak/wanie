@@ -1,12 +1,12 @@
 version: '3.8'
 
 services:
-  wanie:
+  openwa:
     build:
       context: .
       dockerfile: Dockerfile
-    image: 'wanie:latest'
-    container_name: wanie
+    image: 'openwa:latest'
+    container_name: openwa
     env_file:
       - .env
     environment:
@@ -20,21 +20,21 @@ services:
       WANIE_ALLOW_MOCK: '${WANIE_ALLOW_MOCK}'
       DATABASE_URL: '${DATABASE_URL}'
     volumes:
-      - 'wanie-storage:/app/storage'
+      - 'openwa-storage:/app/storage'
     restart: unless-stopped
 
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.wanie.rule=Host(`wanie.commitflow.space`)"
-      - "traefik.http.routers.wanie.entrypoints=websecure"
-      - "traefik.http.routers.wanie.tls=true"
-      - "traefik.http.services.wanie.loadbalancer.server.port=55111"
+      - "traefik.http.routers.openwa.rule=Host(`openwa.commitflow.space`)"
+      - "traefik.http.routers.openwa.entrypoints=websecure"
+      - "traefik.http.routers.openwa.tls=true"
+      - "traefik.http.services.openwa.loadbalancer.server.port=55111"
 
     networks:
       - coolify
 
 volumes:
-  wanie-storage:
+  openwa-storage:
 
 networks:
   coolify:
