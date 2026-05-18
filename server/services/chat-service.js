@@ -69,6 +69,7 @@ function mapMessage(message) {
 function getChatTransportType(contactExternalId) {
   const normalized = String(contactExternalId || "").toLowerCase();
   if (normalized.startsWith("tg:")) return "telegram";
+  if (normalized.startsWith("wa:")) return "whatsapp";
   if (
     normalized.endsWith("@c.us") ||
     normalized.endsWith("@g.us") ||

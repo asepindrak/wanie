@@ -114,6 +114,12 @@ function getConnectButtonClassName(session) {
   return "rounded-2xl bg-brand-500 px-4 py-2 text-sm font-semibold text-[#10251a] transition hover:bg-brand-600 disabled:opacity-60";
 }
 
+function formatTransportLabel(transportType) {
+  if (transportType === "mock") return "Mock";
+  if (transportType === "whatsapp_cloud") return "WhatsApp Official API";
+  return "WhatsApp Web";
+}
+
 function initials(label) {
   return String(label || "?")
     .split(" ")
@@ -226,8 +232,20 @@ export function SettingsModal({
   syncingWorkspace,
   sessionName,
   sessionPhone,
+  sessionTransport,
+  metaPhoneNumberId,
+  metaBusinessAccountId,
+  metaAccessToken,
+  metaVerifyToken,
+  metaAppSecret,
   onSessionNameChange,
   onSessionPhoneChange,
+  onSessionTransportChange,
+  onMetaPhoneNumberIdChange,
+  onMetaBusinessAccountIdChange,
+  onMetaAccessTokenChange,
+  onMetaVerifyTokenChange,
+  onMetaAppSecretChange,
   onCreateSession,
   apiKeys,
   apiKeysLoading,
@@ -1014,10 +1032,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                               "Waiting for WhatsApp pairing"}
                           </p>
                           <p className="mt-2 text-xs uppercase tracking-[0.16em] text-white/30">
-                            Transport:{" "}
-                            {session.transportType === "mock"
-                              ? "Mock"
-                              : "WhatsApp Web"}
+                            Transport: {formatTransportLabel(session.transportType)}
                           </p>
                           <div className="mt-2 grid gap-1 text-xs text-white/35">
                             <p>
@@ -1047,17 +1062,20 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                           type="button"
                           className={getConnectButtonClassName(session)}
                           disabled={
-                            !!connectLoading && connectLoading === session.id
+                            (!!connectLoading && connectLoading === session.id) ||
+                            session.transportType === "whatsapp_cloud"
                           }
                           onClick={(event) => {
                             event.stopPropagation();
                             onConnect(session.id);
                           }}
                         >
-                          {getConnectButtonLabel(
-                            session,
-                            connectLoading === session.id,
-                          )}
+                          {session.transportType === "whatsapp_cloud"
+                            ? "Configured"
+                            : getConnectButtonLabel(
+                                session,
+                                connectLoading === session.id,
+                              )}
                         </button>
 
                         <button
@@ -1240,19 +1258,90 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                         required
                       />
                     </div>
+                    <select
+                      className="w-full rounded-[22px] bg-[#2e2f2f] px-4 py-3 text-sm text-white outline-none"
+                      value={sessionTransport || "wwebjs"}
+                      onChange={(event) =>
+                        onSessionTransportChange(event.target.value)
+                      }
+                    >
+                      <option value="wwebjs">WhatsApp Web QR</option>
+                      <option value="whatsapp_cloud">
+                        WhatsApp Official API
+                      </option>
+                    </select>
                     <input
                       className="w-full rounded-[22px] bg-[#2e2f2f] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
-                      placeholder="WhatsApp number (optional)"
+                      placeholder={
+                        sessionTransport === "whatsapp_cloud"
+                          ? "Display WhatsApp number, e.g. 62812..."
+                          : "WhatsApp number (optional)"
+                      }
                       value={sessionPhone}
                       onChange={(event) =>
                         onSessionPhoneChange(event.target.value)
                       }
                     />
+                    {sessionTransport === "whatsapp_cloud" ? (
+                      <div className="space-y-3 rounded-[22px] bg-[#2e2f2f] p-4">
+                        <p className="text-xs leading-5 text-white/45">
+                          Configure this URL in Meta webhook settings:
+                          <span className="mt-1 block break-all font-mono text-white/70">
+                            {activeOrigin}/api/whatsapp/meta/webhook
+                          </span>
+                        </p>
+                        <input
+                          className="w-full rounded-[18px] bg-[#111b21] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                          placeholder="Phone Number ID"
+                          value={metaPhoneNumberId}
+                          onChange={(event) =>
+                            onMetaPhoneNumberIdChange(event.target.value)
+                          }
+                          required
+                        />
+                        <input
+                          className="w-full rounded-[18px] bg-[#111b21] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                          placeholder="WABA ID / Business Account ID (optional)"
+                          value={metaBusinessAccountId}
+                          onChange={(event) =>
+                            onMetaBusinessAccountIdChange(event.target.value)
+                          }
+                        />
+                        <input
+                          className="w-full rounded-[18px] bg-[#111b21] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                          placeholder="Permanent access token"
+                          value={metaAccessToken}
+                          onChange={(event) =>
+                            onMetaAccessTokenChange(event.target.value)
+                          }
+                          required
+                        />
+                        <input
+                          className="w-full rounded-[18px] bg-[#111b21] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                          placeholder="Webhook verify token"
+                          value={metaVerifyToken}
+                          onChange={(event) =>
+                            onMetaVerifyTokenChange(event.target.value)
+                          }
+                          required
+                        />
+                        <input
+                          className="w-full rounded-[18px] bg-[#111b21] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                          placeholder="App secret for signature validation (optional)"
+                          value={metaAppSecret}
+                          onChange={(event) =>
+                            onMetaAppSecretChange(event.target.value)
+                          }
+                        />
+                      </div>
+                    ) : null}
                     <button
                       type="submit"
                       className="w-full rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-[#10251a]"
                     >
-                      Add WhatsApp Session
+                      {sessionTransport === "whatsapp_cloud"
+                        ? "Add Official API Session"
+                        : "Add WhatsApp Session"}
                     </button>
                   </form>
                 </>

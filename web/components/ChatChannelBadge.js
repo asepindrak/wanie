@@ -10,6 +10,7 @@ export function getChatChannel(chat) {
   const externalId = String(chat?.contact?.externalId || "").toLowerCase();
   if (externalId.startsWith("tg:")) return "telegram";
   if (
+    externalId.startsWith("wa:") ||
     externalId.endsWith("@c.us") ||
     externalId.endsWith("@g.us") ||
     externalId.endsWith("@lid")

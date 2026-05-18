@@ -107,7 +107,7 @@ export function SessionSidebar({
                  <h3 className="font-semibold text-white">{activeSession.name}</h3>
                  <p className="text-sm text-white/45">{activeSession.phoneNumber || "Waiting for WhatsApp pairing"}</p>
                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/30">
-                   Transport: {activeSession.transportType === "mock" ? "Mock" : "WhatsApp Web"}
+                   Transport: {activeSession.transportType === "mock" ? "Mock" : activeSession.transportType === "whatsapp_cloud" ? "WhatsApp Official API" : "WhatsApp Web"}
                  </p>
                  <p className="mt-1 text-xs text-white/35">
                    Health: {formatHealthTime(activeSession.lastHealthCheckAt)}

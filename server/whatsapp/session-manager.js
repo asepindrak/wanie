@@ -110,6 +110,27 @@ class SessionManager extends EventEmitter {
       throw new Error("Session not found.");
     }
 
+    if (session.transportType === "whatsapp_cloud") {
+      await sessionService.touchSessionState(session.id, {
+        status: "ready",
+        qrCode: null,
+        lastError: null,
+        lastHealthCheckAt: new Date(),
+        lastSeenAt: new Date(),
+        reconnectAttempts: 0,
+      });
+      this.emit("session-status", {
+        id: session.id,
+        userId: session.userId,
+        sessionId: session.id,
+        status: "ready",
+        transportType: "whatsapp_cloud",
+        lastError: null,
+        qrCode: null,
+      });
+      return null;
+    }
+
     await sessionService.touchSessionState(session.id, {
       status: "connecting",
       qrCode: null,

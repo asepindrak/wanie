@@ -18,6 +18,7 @@ enum TransportType {
   mock
   wwebjs
   telegram
+  whatsapp_cloud
 }
 
 enum MessageType {

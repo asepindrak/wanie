@@ -31,6 +31,7 @@ const crmAutoReplyService = require("../services/crm-auto-reply-service");
 const knowledgeService = require("../services/knowledge-service");
 const TelegramConfigService = require("../services/telegram-config-service");
 const TelegramService = require("../services/telegram-service");
+const WhatsAppMetaService = require("../services/whatsapp-meta-service");
 const { prisma } = require("../database/client");
 const {
   createAgentReadme,
@@ -326,15 +327,47 @@ function createApp({ config, sessionManager }) {
         req.user.id,
         req.params.sessionId,
       );
+      WhatsAppMetaService.deleteSessionConfig(req.params.sessionId);
       res.json({ ok: true, deleted: Boolean(result?.deleted) });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.use(express.json({ limit: "10mb" }));
+  app.use(
+    express.json({
+      limit: "10mb",
+      verify: (req, res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true }));
   app.use("/media", express.static(mediaDir));
+
+  app.get("/api/whatsapp/meta/webhook", (req, res) => {
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
+    if (mode === "subscribe" && WhatsAppMetaService.findVerifyToken(token)) {
+      return res.status(200).send(String(challenge || ""));
+    }
+    return res.sendStatus(403);
+  });
+
+  app.post(
+    "/api/whatsapp/meta/webhook",
+    withAsync(async (req, res) => {
+      await WhatsAppMetaService.handleWebhookPayload(req.body || {}, {
+        rawBody: req.rawBody,
+        signature: req.headers["x-hub-signature-256"],
+        io: req.app.get("io"),
+        sessionManager,
+        userRoom: (userId) => `user:${userId}`,
+      });
+      res.json({ ok: true });
+    }, 400),
+  );
 
   app.get("/docs", (req, res) => {
     res.type("html").send(createSwaggerHtml());
@@ -1501,12 +1534,39 @@ Rules:
 
   app.post("/api/sessions", requireAuth, async (req, res) => {
     try {
+      if (req.body?.transportType === "whatsapp_cloud") {
+        const { phoneNumberId, accessToken, verifyToken } = req.body || {};
+        if (!phoneNumberId || !accessToken || !verifyToken) {
+          throw new Error(
+            "phoneNumberId, accessToken, and verifyToken are required for WhatsApp Meta API sessions.",
+          );
+        }
+      }
       const session = await sessionService.createUserSession(
         req.user.id,
         req.body,
       );
+      if (session.transportType === "whatsapp_cloud") {
+        const {
+          phoneNumberId,
+          businessAccountId,
+          accessToken,
+          verifyToken,
+          appSecret,
+        } = req.body || {};
+        WhatsAppMetaService.setSessionConfig(session.id, {
+          phoneNumberId,
+          businessAccountId,
+          accessToken,
+          verifyToken,
+          appSecret,
+        });
+      }
       // Only create companion chat if requested or not explicitly disabled
-      if (req.body.createCompanionChat !== false) {
+      if (
+        req.body.createCompanionChat !== false &&
+        session.transportType !== "whatsapp_cloud"
+      ) {
         await chatService.createSessionCompanionChat(req.user.id, session);
       }
       res.status(201).json({ session });
@@ -1893,9 +1953,6 @@ Rules:
         }
         targetChat = existingChat;
       } else {
-        const externalId =
-          await chatService.normalizeWhatsappExternalId(phoneNumber);
-
         if (!chosenSessionId) {
           const sessions = await sessionService.listUserSessions(req.user.id);
           const readySession = sessions.find(
@@ -1908,6 +1965,15 @@ Rules:
           }
           chosenSessionId = readySession.id;
         }
+
+        const chosenSession = await sessionService.getSessionById(
+          req.user.id,
+          chosenSessionId,
+        );
+        const externalId =
+          chosenSession?.transportType === "whatsapp_cloud"
+            ? WhatsAppMetaService.externalIdForWaId(phoneNumber)
+            : await chatService.normalizeWhatsappExternalId(phoneNumber);
 
         targetChat = await chatService.ensureChatForWhatsappId({
           userId: req.user.id,

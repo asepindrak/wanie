@@ -1,6 +1,7 @@
 const { prisma } = require("../database/client");
 const chatService = require("./chat-service");
 const TelegramService = require("./telegram-service");
+const WhatsAppMetaService = require("./whatsapp-meta-service");
 
 const DEFAULT_MAX_ATTEMPTS = Math.max(
   1,
@@ -79,6 +80,7 @@ function emitJobUpdate(io, job) {
 }
 
 function resolveTransport(message) {
+  if (message?.session?.transportType === "whatsapp_cloud") return "whatsapp_cloud";
   if (message?.sessionId) return "whatsapp";
   if (String(message?.receiver || "").startsWith("tg:")) return "telegram";
   return "unknown";
@@ -98,6 +100,7 @@ async function loadMessageForUser(userId, messageId) {
       chat: { userId },
     },
     include: {
+      session: true,
       mediaFile: true,
       statuses: true,
       chat: {
@@ -160,6 +163,10 @@ async function deliverMessage({ message, sessionManager }) {
     return { externalMessageId: null };
   }
 
+  if (transport === "whatsapp_cloud") {
+    return WhatsAppMetaService.sendMessage(message);
+  }
+
   throw new Error("No outbound transport is available for this message.");
 }
 
@@ -174,8 +181,9 @@ async function processJob(jobOrId, { sessionManager, io } = {}) {
       include: {
         message: {
           include: {
-            mediaFile: true,
-            statuses: true,
+          mediaFile: true,
+          session: true,
+          statuses: true,
             chat: true,
           },
         },

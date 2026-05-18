@@ -58,18 +58,23 @@ async function listUserSessions(userId) {
   });
 }
 
-async function createUserSession(userId, { name, phoneNumber }) {
+async function createUserSession(userId, { name, phoneNumber, transportType }) {
   if (!name) {
     throw new Error("Session name is required.");
   }
+
+  const transport =
+    String(transportType || "").trim() === "whatsapp_cloud"
+      ? "whatsapp_cloud"
+      : "wwebjs";
 
   return prisma.whatsappSession.create({
     data: {
       userId,
       name: String(name).trim(),
       phoneNumber: phoneNumber ? String(phoneNumber).trim() : null,
-      status: "disconnected",
-      transportType: "wwebjs",
+      status: transport === "whatsapp_cloud" ? "ready" : "disconnected",
+      transportType: transport,
     },
   });
 }

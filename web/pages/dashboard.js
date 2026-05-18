@@ -48,6 +48,12 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [sessionName, setSessionName] = useState("");
   const [sessionPhone, setSessionPhone] = useState("");
+  const [sessionTransport, setSessionTransport] = useState("wwebjs");
+  const [metaPhoneNumberId, setMetaPhoneNumberId] = useState("");
+  const [metaBusinessAccountId, setMetaBusinessAccountId] = useState("");
+  const [metaAccessToken, setMetaAccessToken] = useState("");
+  const [metaVerifyToken, setMetaVerifyToken] = useState("");
+  const [metaAppSecret, setMetaAppSecret] = useState("");
   const [chatQuery, setChatQuery] = useState("");
   const [contactQuery, setContactQuery] = useState("");
   const [messageQuery, setMessageQuery] = useState("");
@@ -463,6 +469,12 @@ export default function DashboardPage() {
         body: {
           name: sessionName,
           phoneNumber: sessionPhone,
+          transportType: sessionTransport,
+          phoneNumberId: metaPhoneNumberId,
+          businessAccountId: metaBusinessAccountId,
+          accessToken: metaAccessToken,
+          verifyToken: metaVerifyToken,
+          appSecret: metaAppSecret,
         },
       });
 
@@ -470,6 +482,12 @@ export default function DashboardPage() {
       setActiveSession(data.session.id);
       setSessionName("");
       setSessionPhone("");
+      setSessionTransport("wwebjs");
+      setMetaPhoneNumberId("");
+      setMetaBusinessAccountId("");
+      setMetaAccessToken("");
+      setMetaVerifyToken("");
+      setMetaAppSecret("");
       setSettingsOpen(true);
       await loadWorkspace();
     } catch (requestError) {
@@ -963,8 +981,20 @@ export default function DashboardPage() {
         syncingWorkspace={syncingWorkspace}
         sessionName={sessionName}
         sessionPhone={sessionPhone}
+        sessionTransport={sessionTransport}
+        metaPhoneNumberId={metaPhoneNumberId}
+        metaBusinessAccountId={metaBusinessAccountId}
+        metaAccessToken={metaAccessToken}
+        metaVerifyToken={metaVerifyToken}
+        metaAppSecret={metaAppSecret}
         onSessionNameChange={setSessionName}
         onSessionPhoneChange={setSessionPhone}
+        onSessionTransportChange={setSessionTransport}
+        onMetaPhoneNumberIdChange={setMetaPhoneNumberId}
+        onMetaBusinessAccountIdChange={setMetaBusinessAccountId}
+        onMetaAccessTokenChange={setMetaAccessToken}
+        onMetaVerifyTokenChange={setMetaVerifyToken}
+        onMetaAppSecretChange={setMetaAppSecret}
         onCreateSession={handleCreateSession}
         apiKeys={apiKeys}
         apiKeysLoading={apiKeysLoading}
