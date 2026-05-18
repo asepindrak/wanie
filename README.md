@@ -42,10 +42,6 @@ If you use Wanie with WhatsApp, make sure your usage complies with the terms, po
   <img src="./Screenshot-1.png" alt="Wanie screenshot 1" width="720" />
 </p>
 
-<p align="center">
-  <img src="./Screenshot-2.png" alt="Wanie screenshot 2" width="720" />
-</p>
-
 ## Telegram Bot Integration
 
 - Setup a Telegram bot using a BotFather token and connect it to Wanie.
