@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Setup OpenWA workspaces directory (Linux/macOS)
+# Setup Wanie workspaces directory (Linux/macOS)
 # Usage: sudo ./setup-workspaces.sh [USER] [GROUP]
 
 set -euo pipefail
 USER=${1:-$(whoami)}
 GROUP=${2:-$USER}
 
-# resolve workspacesDir from env or default (~/.openwa/workspaces)
-WORKSPACES=${OPENWA_WORKSPACES_DIR:-"$HOME/.openwa/workspaces"}
+# resolve workspacesDir from env or default (~/.wanie/workspaces)
+WORKSPACES=${WANIE_WORKSPACES_DIR:-"$HOME/.wanie/workspaces"}
 
 echo "Creating workspaces directory: $WORKSPACES"
 mkdir -p "$WORKSPACES"

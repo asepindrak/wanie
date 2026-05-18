@@ -7,7 +7,7 @@ const sessionService = require("../services/session-service");
 function formatTransportError(transportType, error) {
   const message = String(error?.message || error || "Unknown error");
   if (transportType === "wwebjs" && message.includes("Cannot find module")) {
-    return "whatsapp-web.js is not installed. Run `npm install whatsapp-web.js` in the OpenWA package, then try Connect again.";
+    return "whatsapp-web.js is not installed. Run `npm install whatsapp-web.js` in the Wanie package, then try Connect again.";
   }
 
   return `${transportType} failed: ${message}`;
@@ -156,7 +156,7 @@ class SessionManager extends EventEmitter {
 
     if (candidates.length === 0) {
       throw new Error(
-        "No WhatsApp transport is enabled. Enable whatsapp-web.js or set OPENWA_ALLOW_MOCK=true for mock mode.",
+        "No WhatsApp transport is enabled. Enable whatsapp-web.js or set WANIE_ALLOW_MOCK=true for mock mode.",
       );
     }
 
@@ -182,7 +182,7 @@ class SessionManager extends EventEmitter {
       } catch (error) {
         // DEBUG: Print full error stack for diagnosis
         console.error(
-          "[OpenWA] Adapter connect error:",
+          "[Wanie] Adapter connect error:",
           error && error.stack ? error.stack : error,
         );
         this.adapters.delete(session.id);

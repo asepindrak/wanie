@@ -1,1 +1,1 @@
-npm install -g @adens/openwa
+npm install -g @adens/wanie

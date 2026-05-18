@@ -72,7 +72,7 @@ export default function HomePage() {
     <>
       <AppHead
         title={mode === "login" ? "Login" : "Register"}
-        description="Sign in or register for your OpenWA workspace to manage sessions and chats from one dashboard."
+        description="Sign in or register for your Wanie workspace to manage sessions and chats from one dashboard."
       />
 
       <main className="min-h-screen bg-[linear-gradient(180deg,#0b141a_0%,#111b21_100%)] px-6 py-8">

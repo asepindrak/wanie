@@ -1,20 +1,20 @@
 {
-  "name": "@adens/openwa",
+  "name": "@adens/wanie",
   "version": "1.2.1",
-  "description": "Self-hosted WhatsApp and Telegram CRM gateway with multi-session messaging, AI auto-reply, knowledge base, REST API, webhooks, media support, real-time dashboard, and external agent integration.",
+  "description": "Wanie is an AI messaging CRM for WhatsApp, Telegram, and external apps.",
   "license": "MIT",
   "author": "asepindrak <asepindrakurniawan@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/asepindrak/openwa.git"
+    "url": "git+https://github.com/asepindrak/wanie.git"
   },
-  "homepage": "https://github.com/asepindrak/openwa#readme",
+  "homepage": "https://github.com/asepindrak/wanie#readme",
   "bugs": {
-    "url": "https://github.com/asepindrak/openwa/issues"
+    "url": "https://github.com/asepindrak/wanie/issues"
   },
   "preferGlobal": true,
   "keywords": [
-    "openwa",
+    "wanie",
     "cli",
     "whatsapp",
     "whatsapp-api",
@@ -34,6 +34,7 @@
     "prisma"
   ],
   "bin": {
+    "wanie": "bin/openwa.js",
     "openwa": "bin/openwa.js"
   },
   "scripts": {

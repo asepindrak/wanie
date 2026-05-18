@@ -1,9 +1,9 @@
 <#
-Setup OpenWA workspaces directory (Windows PowerShell)
+Setup Wanie workspaces directory (Windows PowerShell)
 Usage (run as Administrator):
   .\setup-workspaces.ps1 -UserName 'adens' -GrantGroup 'Users'
 
-This script creates the workspaces path (defaults to $env:USERPROFILE\.openwa\workspaces)
+This script creates the workspaces path (defaults to $env:USERPROFILE\.wanie\workspaces)
 and grants full control to the specified user or group recursively using icacls.
 #>
 param(
@@ -11,8 +11,8 @@ param(
   [string]$GrantGroup = $null
 )
 
-$workspaces = $env:OPENWA_WORKSPACES_DIR
-if (-not $workspaces) { $workspaces = Join-Path $env:USERPROFILE '.openwa\workspaces' }
+$workspaces = $env:WANIE_WORKSPACES_DIR
+if (-not $workspaces) { $workspaces = Join-Path $env:USERPROFILE '.wanie\workspaces' }
 
 Write-Host "Creating workspaces directory: $workspaces"
 New-Item -ItemType Directory -Path $workspaces -Force | Out-Null

@@ -182,10 +182,14 @@ function createAuthMiddleware(config, { allowApiKey = true } = {}) {
       const header = req.headers.authorization || "";
       const bearerValue = header.startsWith("Bearer ") ? header.slice(7) : null;
       const headerApiKey =
-        req.headers["x-api-key"] || req.headers["x-openwa-api-key"] || null;
+        req.headers["x-api-key"] ||
+        req.headers["x-wanie-api-key"] ||
+        req.headers["x-openwa-api-key"] ||
+        null;
       const apiKey = allowApiKey
         ? headerApiKey ||
-          (String(bearerValue || "").startsWith("owa_live_")
+          (String(bearerValue || "").startsWith("wanie_live_") ||
+          String(bearerValue || "").startsWith("owa_live_")
             ? bearerValue
             : null)
         : null;

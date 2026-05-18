@@ -1,6 +1,6 @@
-# OpenWA Features
+# Wanie Features
 
-This document lists all features available in OpenWA, extracted from the API specification.
+This document lists all features available in Wanie, extracted from the API specification.
 
 ## Authentication
 
@@ -80,7 +80,7 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Per-session automation mode overrides for WhatsApp sessions
 - AI draft generation from recent conversation context
 - AI auto-reply for inbound customer messages
-- Auto-reply pauses temporarily per chat after an admin replies from OpenWA or the WhatsApp app
+- Auto-reply pauses temporarily per chat after an admin replies from Wanie or the WhatsApp app
 - WhatsApp group auto-reply is off by default and requires an explicit per-chat Auto send override
 - Knowledge-base grounded responses using uploaded documents
 - Conversation-aware prompts with recent message transcript
@@ -121,7 +121,7 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Telegram CRM chats support AI draft and auto-reply modes
 - Telegram chats with CRM mode off are stored in the dashboard without giving non-admin users assistant tool access
 - Outbound CRM and API messages can be delivered back to Telegram
-- Admin Telegram chat IDs remain reserved for remote OpenWA assistant control
+- Admin Telegram chat IDs remain reserved for remote Wanie assistant control
 - Admin Telegram chat ID allowlist can be managed from Settings
 - Non-admin Telegram chat IDs are treated as customer conversations and cannot use the remote assistant tools
 
@@ -131,7 +131,7 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Meta webhook callback endpoint at `/api/whatsapp/meta/webhook`
 - Incoming official API messages are stored in the same chat/message database
 - Supported inbound message types include text, images, videos, documents, audio, locations, buttons, and interactive replies
-- Meta-hosted inbound media is downloaded into OpenWA media storage
+- Meta-hosted inbound media is downloaded into Wanie media storage
 - Outbound dashboard, CRM, and API replies can be sent through Meta Cloud API
 - Official API chats can trigger CRM draft and auto-reply automation
 - Official API chats can trigger incoming-message webhooks for external apps
@@ -173,7 +173,7 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Prisma ORM with SQLite database
 - Multi-user support
 - Multi-session support per user
-- Remote OpenWA control via Telegram bot with admin allowlist and `/new` chat reset support
+- Remote Wanie control via Telegram bot with admin allowlist and `/new` chat reset support
 - CRM workspace with AI auto-reply, knowledge base, Telegram customer channel support, and automation logs
 - Dark theme UI
 - Search functionality across messages, chats, and contacts

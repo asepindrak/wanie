@@ -5,7 +5,10 @@ import { MdMoreVert } from "react-icons/md";
 import { useState } from "react";
 import { useEffect } from "react";
 
-const openwaVersion = process.env.NEXT_PUBLIC_OPENWA_VERSION || "";
+const wanieVersion =
+  process.env.NEXT_PUBLIC_WANIE_VERSION ||
+  process.env.NEXT_PUBLIC_OPENWA_VERSION ||
+  "";
 
 function formatTime(value) {
   if (!value) {
@@ -108,10 +111,10 @@ export function ContactList({
       <div className="px-5 py-5">
         <div className="flex items-center justify-center">
           <div className="flex h-12 items-center gap-2">
-            <BrandLogo variant="long" alt="OpenWA" className="h-full" />
-            {openwaVersion ? (
+            <BrandLogo variant="long" alt="Wanie" className="h-full" />
+            {wanieVersion ? (
               <span className="rounded-full bg-white/5 px-2 py-1 text-[11px] font-semibold text-white/45">
-                v{openwaVersion}
+                v{wanieVersion}
               </span>
             ) : null}
           </div>

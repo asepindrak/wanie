@@ -148,9 +148,9 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
-const webhookReceiverExample = `app.post("/openwa-webhook", express.json(), async (req, res) => {
-  const key = req.get("x-openwa-webhook-key");
-  if (key !== process.env.OPENWA_WEBHOOK_KEY) {
+const webhookReceiverExample = `app.post("/wanie-webhook", express.json(), async (req, res) => {
+  const key = req.get("x-wanie-webhook-key") || req.get("x-openwa-webhook-key");
+  if (key !== process.env.WANIE_WEBHOOK_KEY) {
     return res.status(401).json({ ok: false });
   }
 
@@ -158,7 +158,7 @@ const webhookReceiverExample = `app.post("/openwa-webhook", express.json(), asyn
   const isTelegram = String(chat.contact?.externalId || "").startsWith("tg:");
   const hasMedia = Boolean(message.mediaFile);
 
-  console.log("Incoming OpenWA message", {
+  console.log("Incoming Wanie message", {
     chatId: chat.id,
     channel: isTelegram ? "telegram" : "whatsapp",
     from: message.sender,
@@ -349,9 +349,9 @@ export function SettingsModal({
     typeof window !== "undefined"
       ? window.location.origin
       : getApiBaseUrl().replace(/\/+$/, "");
-  const gatewayAgentInstruction = `Integrate this application with OpenWA as a messaging gateway.
+  const gatewayAgentInstruction = `Integrate this application with Wanie as a messaging gateway.
 
-OpenWA base URL:
+Wanie base URL:
 ${activeOrigin}
 
 Read these docs first:
@@ -359,13 +359,13 @@ Read these docs first:
 - ${activeOrigin}/docs/json
 
 Use X-API-Key for authentication.
-Configure an OpenWA webhook so this application receives incoming customer messages.
-Verify the x-openwa-webhook-key header on every webhook request.
+Configure a Wanie webhook so this application receives incoming customer messages.
+Verify the x-wanie-webhook-key header on every webhook request.
 Store chat.id from the webhook payload.
 Reply to the customer with POST ${activeOrigin}/api/chats/{chatId}/messages/send.
 For media replies, either pass a public mediaUrl or upload to POST ${activeOrigin}/api/media and then send the returned mediaFileId.
-Do not use OpenWA internal CRM automation for this integration; set OpenWA CRM automation to Off.
-Treat WhatsApp and non-admin Telegram customer messages the same way: receive them from the webhook and reply through the OpenWA API.`;
+Do not use Wanie internal CRM automation for this integration; set Wanie CRM automation to Off.
+Treat WhatsApp and non-admin Telegram customer messages the same way: receive them from the webhook and reply through the Wanie API.`;
 
   function providerHint(key) {
     if (!key) return "";
@@ -768,7 +768,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
   const handleResetAllData = async () => {
     if (!token) return;
     const confirmed = window.prompt(
-      "Type YES to confirm resetting all OpenWA data. This action is permanent.",
+      "Type YES to confirm resetting all Wanie data. This action is permanent.",
     );
     if (confirmed !== "YES") return;
 
@@ -916,7 +916,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-2 shadow-[0_16px_40px_rgba(0,0,0,0.18)]">
                 <BrandLogo
                   variant="square"
-                  alt="OpenWA"
+                  alt="Wanie"
                   className="h-full w-full rounded-xl"
                 />
               </div>
@@ -925,7 +925,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                   Settings
                 </p>
                 <h2 className="mt-2 text-xl font-semibold text-white">
-                  OpenWA Devices
+                  Wanie Devices
                 </h2>
                 <div className="mt-1 text-sm text-white/60">
                   <span className="font-medium text-white/85">AI:</span>{" "}
@@ -1385,7 +1385,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                         </h4>
                         <p className="mt-1 text-xs leading-5 text-white/45">
                           Copy this into an external AI agent so it can connect
-                          to OpenWA as a WhatsApp and Telegram gateway.
+                          to Wanie as a WhatsApp and Telegram gateway.
                         </p>
                       </div>
                       <button
@@ -1518,7 +1518,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                         </h4>
                         <p className="mt-1 text-xs leading-5 text-white/45">
                           Paste this into the external app agent that will
-                          receive webhooks and send replies through OpenWA.
+                          receive webhooks and send replies through Wanie.
                         </p>
                       </div>
                       <button
@@ -1567,7 +1567,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                       </div>
                       <textarea
                         className="mt-3 min-h-32 w-full resize-y rounded-[18px] bg-[#0f1010] px-4 py-3 font-mono text-xs leading-5 text-white outline-none placeholder:text-white/30"
-                        placeholder={`Example:\nPOST https://crm.example.com/api/openwa/messages\nAuthorization: Bearer <token>\nBody: { "customerId": "{{chat.contact.externalId}}", "message": "{{message.body}}" }`}
+                        placeholder={`Example:\nPOST https://crm.example.com/api/wanie/messages\nAuthorization: Bearer <token>\nBody: { "customerId": "{{chat.contact.externalId}}", "message": "{{message.body}}" }`}
                         value={webhookGeneratorPrompt}
                         onChange={(e) => setWebhookGeneratorPrompt(e.target.value)}
                       />
@@ -1603,7 +1603,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                       </span>
                       <input
                         className="w-full rounded-[22px] bg-[#2e2f2f] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
-                        placeholder="https://example.com/openwa-webhook"
+                          placeholder="https://example.com/wanie-webhook"
                         value={webhookUrl || ""}
                         onChange={(e) => onWebhookUrlChange(e.target.value)}
                       />
@@ -1629,11 +1629,11 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                       </label>
                       <label className="block">
                         <span className="mb-1 block text-xs font-medium text-white/45">
-                          Legacy OpenWA key header
+                          Legacy webhook key header
                         </span>
                         <input
                           className="w-full rounded-[22px] bg-[#2e2f2f] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
-                          placeholder="Sent as x-openwa-webhook-key unless custom headers override it"
+                          placeholder="Sent as x-wanie-webhook-key and legacy x-openwa-webhook-key unless custom headers override them"
                           value={webhookApiKey || ""}
                           onChange={(e) =>
                             onWebhookApiKeyChange(e.target.value)
@@ -1717,7 +1717,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                         Set your webhook URL to this route, then use the same
                         API key value as{" "}
                         <span className="font-mono">
-                          OPENWA_WEBHOOK_KEY
+                          WANIE_WEBHOOK_KEY
                         </span>
                         .
                       </p>
@@ -1744,10 +1744,10 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                         </button>
                       </div>
                       <p className="mt-1 text-xs leading-5 text-white/45">
-                        OpenWA sends text and supported media messages as JSON
+                        Wanie sends text and supported media messages as JSON
                         with header{" "}
                         <span className="font-mono">
-                          x-openwa-webhook-key
+                          x-wanie-webhook-key
                         </span>
                         . Media messages include{" "}
                         <span className="font-mono">message.mediaFile</span>.
@@ -1973,7 +1973,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                           Active bots
                         </h3>
                         <p className="mt-1 text-xs leading-5 text-white/45">
-                          Telegram bots configured for this OpenWA account.
+                          Telegram bots configured for this Wanie account.
                         </p>
                       </div>
                       <button
@@ -2036,7 +2036,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-white/45">
                     Telegram chat IDs in this list can use the bot as the
-                    OpenWA assistant admin. Other Telegram users follow CRM mode;
+                    Wanie assistant admin. Other Telegram users follow CRM mode;
                     when CRM is off their messages are saved to the dashboard
                     without assistant tool access.
                   </p>
@@ -2051,7 +2051,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                           Telegram AI replies
                         </span>
                         <span className="mt-1 block text-xs leading-5 text-white/45">
-                          Turn off to store Telegram messages without OpenWA AI
+                          Turn off to store Telegram messages without Wanie AI
                           assistant or CRM auto-reply responses.
                         </span>
                       </span>
@@ -2558,7 +2558,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                         Allow new registrations
                       </div>
                       <div className="text-xs text-white/45">
-                        Toggle whether new users can sign up for this OpenWA
+                        Toggle whether new users can sign up for this Wanie
                         workspace.
                       </div>
                     </div>
@@ -2601,7 +2601,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                         Auto-approve terminal commands
                       </div>
                       <div className="text-xs text-white/45">
-                        Bypass OPENWA_TERMINAL_ALLOWLIST and allow auto
+                        Bypass WANIE_TERMINAL_ALLOWLIST and allow auto
                         execution of any command.
                       </div>
                     </div>
@@ -2664,7 +2664,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
 
                   <div className="mt-6 rounded-[22px] bg-[#2e2f2f] p-4 ring-1 ring-white/10">
                     <p className="text-sm font-semibold text-white">
-                      Reset all OpenWA data
+                      Reset all Wanie data
                     </p>
                     <p className="mt-1 text-xs text-white/45">
                       Permanently deletes all stored app data. Requires

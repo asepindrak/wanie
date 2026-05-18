@@ -1,6 +1,6 @@
-# OpenWA Deployment Guide
+# Wanie Deployment Guide
 
-This guide covers deploying OpenWA in various environments.
+This guide covers deploying Wanie in various environments.
 
 ## Quick Start (Global CLI)
 
@@ -12,13 +12,13 @@ This guide covers deploying OpenWA in various environments.
 ### Installation
 
 ```bash
-npm i -g @adens/openwa
+npm i -g @adens/wanie
 ```
 
 ### Run
 
 ```bash
-openwa
+wanie
 ```
 
 This starts both frontend (port 55111) and backend (port 55222) and automatically opens your browser.
@@ -34,8 +34,8 @@ This starts both frontend (port 55111) and backend (port 55222) and automaticall
 ### Setup
 
 ```bash
-git clone https://github.com/asepindrak/openwa.git
-cd openwa
+git clone https://github.com/asepindrak/wanie.git
+cd wanie
 npm install
 ```
 
@@ -59,7 +59,7 @@ npm start
 ### Build Docker Image
 
 ```bash
-docker build -t openwa:latest .
+docker build -t wanie:latest .
 ```
 
 ### Run Docker Container
@@ -69,11 +69,11 @@ docker run -p 55111:55111 \
   -e HOST=0.0.0.0 \
   -e FE_PORT=55111 \
   -e BE_PORT=55222 \
-  -e OPENWA_DATA_DIR=/app/storage \
-  -e OPENWA_HOME=/app/storage \
+  -e WANIE_DATA_DIR=/app/storage \
+  -e WANIE_HOME=/app/storage \
   -e DATABASE_URL=file:./storage/database/openwa.db \
-  -v openwa-storage:/app/storage \
-  openwa:latest
+  -v wanie-storage:/app/storage \
+  wanie:latest
 ```
 
 ## Environment Configuration
@@ -87,18 +87,18 @@ FE_PORT=55111
 BE_PORT=55222
 
 # Security
-OPENWA_JWT_SECRET=your-secret-key-here
+WANIE_JWT_SECRET=your-secret-key-here
 
 # Features
-OPENWA_AUTO_OPEN=false
-OPENWA_USE_WWEBJS=true
-OPENWA_ALLOW_MOCK=false
+WANIE_AUTO_OPEN=false
+WANIE_USE_WWEBJS=true
+WANIE_ALLOW_MOCK=false
 
 # Database
 DATABASE_URL=file:./storage/database/openwa.db
 ```
 
-OpenWA will automatically derive frontend and backend URLs from `HOST`, `FE_PORT`, and `BE_PORT`.
+Wanie will automatically derive frontend and backend URLs from `HOST`, `FE_PORT`, and `BE_PORT`.
 
 ### Environment Variables Explained
 
@@ -107,10 +107,10 @@ OpenWA will automatically derive frontend and backend URLs from `HOST`, `FE_PORT
 | `HOST`              | 127.0.0.1                         | Server host address         |
 | `FE_PORT`           | 55111                             | Frontend port               |
 | `BE_PORT`           | 55222                             | Backend API port            |
-| `OPENWA_JWT_SECRET` | openwa-local-dev-secret           | JWT signing secret          |
-| `OPENWA_AUTO_OPEN`  | true                              | Auto-open browser on start  |
-| `OPENWA_USE_WWEBJS` | true                              | Enable WhatsApp Web adapter |
-| `OPENWA_ALLOW_MOCK` | false                             | Allow mock adapter          |
+| `WANIE_JWT_SECRET` | wanie-local-dev-secret           | JWT signing secret          |
+| `WANIE_AUTO_OPEN`  | true                              | Auto-open browser on start  |
+| `WANIE_USE_WWEBJS` | true                              | Enable WhatsApp Web adapter |
+| `WANIE_ALLOW_MOCK` | false                             | Allow mock adapter          |
 | `DATABASE_URL`      | file:./storage/database/openwa.db | SQLite database path        |
 
 ## Database Migration
@@ -143,7 +143,7 @@ npx prisma migrate reset
 ```nginx
 server {
     listen 80;
-    server_name openwa.example.com;
+    server_name wanie.example.com;
 
     location / {
         proxy_pass http://localhost:55111;
@@ -162,7 +162,7 @@ server {
 
 ```apache
 <VirtualHost *:80>
-    ServerName openwa.example.com
+    ServerName wanie.example.com
 
     ProxyPreserveHost On
     ProxyPass / http://localhost:55111/
@@ -175,30 +175,30 @@ server {
 ### Using Let's Encrypt with Nginx
 
 ```bash
-certbot certonly --nginx -d openwa.example.com
+certbot certonly --nginx -d wanie.example.com
 ```
 
 Update Nginx configuration:
 
 ```nginx
 listen 443 ssl http2;
-ssl_certificate /etc/letsencrypt/live/openwa.example.com/fullchain.pem;
-ssl_certificate_key /etc/letsencrypt/live/openwa.example.com/privkey.pem;
+ssl_certificate /etc/letsencrypt/live/wanie.example.com/fullchain.pem;
+ssl_certificate_key /etc/letsencrypt/live/wanie.example.com/privkey.pem;
 ```
 
 ## Systemd Service File
 
-Create `/etc/systemd/system/openwa.service`:
+Create `/etc/systemd/system/wanie.service`:
 
 ```ini
 [Unit]
-Description=OpenWA WhatsApp Workspace
+Description=Wanie AI Messaging CRM
 After=network.target
 
 [Service]
 Type=simple
-User=openwa
-WorkingDirectory=/opt/openwa
+User=wanie
+WorkingDirectory=/opt/wanie
 Environment="NODE_ENV=production"
 ExecStart=/usr/bin/npm start
 Restart=on-failure
@@ -211,8 +211,8 @@ WantedBy=multi-user.target
 Start service:
 
 ```bash
-sudo systemctl enable openwa
-sudo systemctl start openwa
+sudo systemctl enable wanie
+sudo systemctl start wanie
 ```
 
 ## Monitoring
@@ -304,7 +304,7 @@ npm start
 ## Security Considerations
 
 1. **Change Default JWT Secret**
-   - Set `OPENWA_JWT_SECRET` to a strong random value
+   - Set `WANIE_JWT_SECRET` to a strong random value
    - Use secrets management tool (Vault, AWS Secrets Manager)
 
 2. **API Key Management**
@@ -335,6 +335,6 @@ npm start
 
 For issues and questions:
 
-- GitHub Issues: https://github.com/asepindrak/openwa/issues
-- Discussions: https://github.com/asepindrak/openwa/discussions
+- GitHub Issues: https://github.com/asepindrak/wanie/issues
+- Discussions: https://github.com/asepindrak/wanie/discussions
 - Documentation: See README.md and FEATURES.md

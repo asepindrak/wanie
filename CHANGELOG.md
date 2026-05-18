@@ -8,8 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-03-27
 
 ### Added
-- Initial release of OpenWA CLI package
-- Self-hosted OpenWA dashboard running locally
+- Initial release of Wanie CLI package
+- Self-hosted Wanie dashboard running locally
 - WhatsApp integration via whatsapp-web.js
 - CLI command entry point (`openwa` command)
 - Express.js backend server with Socket.IO real-time communication

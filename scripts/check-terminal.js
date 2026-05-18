@@ -34,8 +34,8 @@ async function main() {
     }
 
     console.log(
-      "\nOPENWA_TERMINAL_ALLOWLIST env:",
-      process.env.OPENWA_TERMINAL_ALLOWLIST || "(none)",
+      "\nWANIE_TERMINAL_ALLOWLIST env:",
+      process.env.WANIE_TERMINAL_ALLOWLIST || "(none)",
     );
   } catch (err) {
     console.error("Error:", err.message || err);

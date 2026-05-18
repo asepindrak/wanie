@@ -1,4 +1,4 @@
-# PROJECT PROMPT -- OPENWA (CLI + NPM PACKAGE + WHATSAPP WEB CLONE)
+# PROJECT PROMPT -- WANIE (CLI + NPM PACKAGE + WHATSAPP WEB CLONE)
 
 ## ROLE
 
@@ -20,13 +20,13 @@ dashboard**.
 User installs the package globally:
 
 ``` bash
-npm i -g @adens/openwa
+npm i -g @adens/wanie
 ```
 
 Then runs:
 
 ``` bash
-openwa
+wanie
 ```
 
 After that:
@@ -95,7 +95,7 @@ Everything must work locally after install.
 The package must expose this command:
 
 ``` bash
-openwa
+wanie
 ```
 
 When executed it must:
@@ -112,7 +112,7 @@ When executed it must:
 Example terminal output:
 
 ``` bash
-OpenWA is running 🚀
+Wanie is running 🚀
 
 Dashboard: http://localhost:3000
 WhatsApp Sessions: ready
@@ -226,10 +226,10 @@ This project must be built as a **single npm package**, not a monorepo.
 
 Use this structure:
 
-    openwa/
+    wanie/
     │
     ├── bin/
-    │   └── openwa.js          (CLI entry point)
+    │   └── openwa.js         (legacy CLI entry file; exposes `wanie`)
     │
     ├── server/
     │   ├── express/
@@ -307,8 +307,8 @@ Each message must store:
 The system must work like this:
 
 ``` bash
-npm i -g @adens/openwa
-openwa
+npm i -g @adens/wanie
+wanie
 ```
 
 And it must:

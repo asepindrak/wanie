@@ -871,7 +871,7 @@ export default function DashboardPage() {
     <>
       <AppHead
         title="Dashboard"
-        description="Dashboard OpenWA untuk mengelola percakapan, kontak, device, dan session WhatsApp."
+        description="Dashboard Wanie untuk mengelola percakapan, kontak, device, dan session WhatsApp."
       />
 
       {/* Global small loading badge for slow WA syncs */}

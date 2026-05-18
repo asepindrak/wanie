@@ -1,8 +1,8 @@
 (async () => {
   try {
     // Ensure allowlist fallback if not provided in environment
-    process.env.OPENWA_TERMINAL_ALLOWLIST =
-      process.env.OPENWA_TERMINAL_ALLOWLIST || "start,notepad";
+    process.env.WANIE_TERMINAL_ALLOWLIST =
+      process.env.WANIE_TERMINAL_ALLOWLIST || "start,notepad";
 
     const { prisma } = require("../server/database/client");
     const terminal = require("../server/services/terminal-service");

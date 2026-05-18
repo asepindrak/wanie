@@ -1,7 +1,7 @@
 import Head from "next/head";
 
-export function AppHead({ title = "OpenWA", description = "Self-hosted OpenWA dashboard untuk auth, session, dan chat management." }) {
-  const fullTitle = title === "OpenWA" ? title : `${title} | OpenWA`;
+export function AppHead({ title = "Wanie", description = "AI messaging CRM for WhatsApp, Telegram, and external apps." }) {
+  const fullTitle = title === "Wanie" ? title : `${title} | Wanie`;
 
   return (
     <Head>

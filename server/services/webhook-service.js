@@ -44,10 +44,12 @@ function emitDeliveryUpdate(log) {
 
 function getEncryptionKey() {
   const secret =
+    process.env.WANIE_WEBHOOK_SECRET_KEY ||
+    process.env.WANIE_ENCRYPTION_KEY ||
     process.env.OPENWA_WEBHOOK_SECRET_KEY ||
     process.env.OPENWA_ENCRYPTION_KEY ||
     process.env.JWT_SECRET ||
-    "openwa-local-webhook-secret";
+    "wanie-local-webhook-secret";
   return crypto.createHash("sha256").update(String(secret)).digest();
 }
 
@@ -251,6 +253,9 @@ async function deliver(cfg, payload) {
   const timeout = setTimeout(() => controller.abort(), deliveryTimeoutMs);
   const method = normalizeMethod(cfg.method);
   const headers = { ...(cfg.headers || {}) };
+  if (cfg.apiKey && !hasHeader(headers, "x-wanie-webhook-key")) {
+    headers["x-wanie-webhook-key"] = cfg.apiKey;
+  }
   if (cfg.apiKey && !hasHeader(headers, "x-openwa-webhook-key")) {
     headers["x-openwa-webhook-key"] = cfg.apiKey;
   }
@@ -349,11 +354,11 @@ function createTestPayload(userId) {
     sentAt: now,
     chat: {
       id: `test-chat-${userId}`,
-      title: "OpenWA Webhook Test",
+      title: "Wanie Webhook Test",
       transportType: "whatsapp",
       contact: {
         id: `test-contact-${userId}`,
-        displayName: "OpenWA Test Customer",
+        displayName: "Wanie Test Customer",
         externalId: "6281234567890@c.us",
       },
     },
@@ -363,7 +368,7 @@ function createTestPayload(userId) {
       sessionId: "test-session",
       sender: "6281234567890@c.us",
       receiver: `user:${userId}`,
-      body: "This is a test webhook from OpenWA. Reply with HTTP 2xx to mark delivery as successful.",
+      body: "This is a test webhook from Wanie. Reply with HTTP 2xx to mark delivery as successful.",
       type: "text",
       direction: "inbound",
       mediaFile: null,

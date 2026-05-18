@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 const dotenv = require("dotenv");
-const { startOpenWA } = require("../server");
+const { startWanie } = require("../server");
 const authService = require("../server/services/auth-service");
 const {
   storageDir,
@@ -83,7 +83,7 @@ async function askQuestion(prompt, { mask = false } = {}) {
 }
 
 async function resetPasswordFlow() {
-  console.log("\n[OpenWA] Reset Password\n");
+  console.log("\n[Wanie] Reset Password\n");
   const email = await askQuestion("Enter the user email: ");
   if (!email) {
     console.log("Email is required.");
@@ -106,7 +106,10 @@ async function resetPasswordFlow() {
 }
 
 async function ensureJwtSecret() {
-  if (process.env.OPENWA_JWT_SECRET && process.env.OPENWA_JWT_SECRET.trim()) {
+  if (
+    (process.env.WANIE_JWT_SECRET && process.env.WANIE_JWT_SECRET.trim()) ||
+    (process.env.OPENWA_JWT_SECRET && process.env.OPENWA_JWT_SECRET.trim())
+  ) {
     return;
   }
 
@@ -123,19 +126,19 @@ async function ensureJwtSecret() {
     }
   }
 
-  const existingSecret = parsed.OPENWA_JWT_SECRET;
+  const existingSecret = parsed.WANIE_JWT_SECRET || parsed.OPENWA_JWT_SECRET;
   if (existingSecret && String(existingSecret).trim()) {
-    process.env.OPENWA_JWT_SECRET = String(existingSecret).trim();
+    process.env.WANIE_JWT_SECRET = String(existingSecret).trim();
     return;
   }
 
-  console.log("\n[OpenWA] OPENWA_JWT_SECRET is not set.");
+  console.log("\n[Wanie] WANIE_JWT_SECRET is not set.");
   console.log(
     "A secret is required to protect dashboard authentication and API tokens.",
   );
-  const secret = await askQuestion("Enter a value for OPENWA_JWT_SECRET: ");
+  const secret = await askQuestion("Enter a value for WANIE_JWT_SECRET: ");
   if (!secret) {
-    console.log("OPENWA_JWT_SECRET is required.");
+    console.log("WANIE_JWT_SECRET is required.");
     process.exit(1);
   }
 
@@ -143,15 +146,15 @@ async function ensureJwtSecret() {
   if (newContents.length > 0 && !newContents.endsWith("\n")) {
     newContents += "\n";
   }
-  newContents += `OPENWA_JWT_SECRET=${secret}\n`;
+  newContents += `WANIE_JWT_SECRET=${secret}\n`;
   fs.writeFileSync(envPath, newContents, { encoding: "utf8", mode: 0o600 });
-  process.env.OPENWA_JWT_SECRET = secret;
-  console.log(`[OpenWA] Saved OPENWA_JWT_SECRET to ${envPath}`);
+  process.env.WANIE_JWT_SECRET = secret;
+  console.log(`[Wanie] Saved WANIE_JWT_SECRET to ${envPath}`);
 }
 
 async function resetAllDataFlow() {
-  console.log("\n[OpenWA] Reset All Data\n");
-  console.log(`This will permanently delete all OpenWA data in ${storageDir}`);
+  console.log("\n[Wanie] Reset All Data\n");
+  console.log(`This will permanently delete all Wanie data in ${storageDir}`);
   const confirm = await askQuestion("Type YES to confirm: ");
   if (confirm !== "YES") {
     console.log("Reset cancelled.");
@@ -163,7 +166,7 @@ async function resetAllDataFlow() {
       fs.rmSync(storageDir, { recursive: true, force: true });
     }
     ensureRuntimeDirs();
-    console.log("All OpenWA data has been reset. You can start OpenWA again.");
+    console.log("All Wanie data has been reset. You can start Wanie again.");
   } catch (error) {
     console.error("Failed to reset all data:", error.message);
     process.exit(1);
@@ -171,7 +174,7 @@ async function resetAllDataFlow() {
 }
 
 async function handleResetCommand() {
-  console.log("\n[OpenWA] Reset command\n");
+  console.log("\n[Wanie] Reset command\n");
   console.log("1) Reset Password");
   console.log("2) Reset All Data");
 
@@ -186,15 +189,15 @@ async function handleResetCommand() {
   }
 }
 
-console.log("\x1b[36m[OpenWA]\x1b[0m Initializing... Please wait.");
+console.log("\x1b[36m[Wanie]\x1b[0m Initializing... Please wait.");
 
 // Friendly Windows startup hint about shell quoting issues
 if (process.platform === "win32") {
   console.log(
-    "\x1b[33m[OpenWA]\x1b[0m Running on Windows — if you see PowerShell quoting errors, try using Git Bash or run commands in a bash-compatible shell.",
+    "\x1b[33m[Wanie]\x1b[0m Running on Windows — if you see PowerShell quoting errors, try using Git Bash or run commands in a bash-compatible shell.",
   );
   console.log(
-    "\x1b[33m[OpenWA]\x1b[0m For npm script environment variables use 'cross-env' for cross-platform compatibility.",
+    "\x1b[33m[Wanie]\x1b[0m For npm script environment variables use 'cross-env' for cross-platform compatibility.",
   );
 }
 
@@ -205,9 +208,9 @@ if (command === "reset") {
   });
 } else {
   ensureJwtSecret()
-    .then(() => startOpenWA({ dev }))
+    .then(() => startWanie({ dev }))
     .catch((error) => {
-      console.error("Failed to start OpenWA.", error);
+      console.error("Failed to start Wanie.", error);
       process.exit(1);
     });
 }

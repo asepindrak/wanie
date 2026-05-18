@@ -246,8 +246,8 @@ async function ensureWelcomeWorkspace(userId) {
       create: {
         userId,
         externalId: "openwa:assistant",
-        displayName: "OpenWA Assistant",
-        avatarUrl: createAvatarDataUrl("OpenWA Assistant", "openwa:assistant"),
+        displayName: "Wanie Assistant",
+        avatarUrl: createAvatarDataUrl("Wanie Assistant", "openwa:assistant"),
       },
     }),
   );
@@ -288,7 +288,7 @@ async function ensureWelcomeWorkspace(userId) {
           create: {
             sender: "system",
             receiver: `user:${userId}`,
-            body: "Welcome to OpenWA! I'm your AI assistant. I can autonomously set up a new WhatsApp device for you. Shall we add one now?",
+            body: "Welcome to Wanie! I'm your AI assistant. I can autonomously set up a new WhatsApp device for you. Shall we add one now?",
             type: "text",
             direction: "inbound",
             statuses: {
@@ -305,7 +305,7 @@ async function ensureWelcomeWorkspace(userId) {
       where: { id: contact.id },
       data: {
         lastMessagePreview:
-          "Welcome to OpenWA! I'm your AI assistant. I can autonomously set up a new WhatsApp device for you. Shall we add one now?",
+          "Welcome to Wanie! I'm your AI assistant. I can autonomously set up a new WhatsApp device for you. Shall we add one now?",
         lastMessageAt: new Date(),
         unreadCount: 0,
       },

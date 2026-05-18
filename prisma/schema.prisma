@@ -304,7 +304,7 @@ model CrmAiSetting {
   cooldownSeconds             Int      @default(180)
   adminPauseSeconds           Int      @default(1800)
   maxAutoRepliesPerChatPerDay Int      @default(20)
-  assistantName               String   @default("OpenWA CRM Assistant")
+  assistantName               String   @default("Wanie CRM Assistant")
   businessName                String?
   persona                     String?
   agentInstructions           String?

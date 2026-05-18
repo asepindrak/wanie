@@ -56,10 +56,10 @@ export function SessionSidebar({
         <p className="text-[11px] uppercase tracking-[0.28em] text-brand-100/60">Workspace</p>
         <div className="mt-3 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-2 shadow-[0_16px_40px_rgba(0,0,0,0.18)]">
-            <BrandLogo variant="square" alt="OpenWA" className="h-full w-full rounded-xl" />
+            <BrandLogo variant="square" alt="Wanie" className="h-full w-full rounded-xl" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-white">OpenWA Devices</h2>
+            <h2 className="text-lg font-semibold text-white">Wanie Devices</h2>
             <p className="text-sm text-white/45">Manage multiple numbers in one dashboard.</p>
           </div>
         </div>
@@ -93,7 +93,7 @@ export function SessionSidebar({
 
           {sessions.length === 0 ? (
             <div className="rounded-[26px] border border-dashed border-white/10 bg-white/[0.03] px-4 py-7 text-sm leading-6 text-white/45">
-              No active sessions. Add a new device to start building your OpenWA workspace.
+              No active sessions. Add a new device to start building your Wanie workspace.
             </div>
           ) : null}
         </div>

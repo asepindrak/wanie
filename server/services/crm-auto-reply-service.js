@@ -186,7 +186,7 @@ function buildPrompt({ chat, messages, snippets, settings }) {
       ? "Telegram"
       : "WhatsApp";
   const assistantName =
-    String(settings.assistantName || "").trim() || "OpenWA CRM Assistant";
+    String(settings.assistantName || "").trim() || "Wanie CRM Assistant";
   const businessName = String(settings.businessName || "").trim();
   const knowledgeContext = snippets.length
     ? snippets
@@ -430,7 +430,7 @@ async function testKnowledgeChat(userId, question) {
         role: "user",
         content: [
           "You are testing a CRM knowledge base.",
-          `Assistant identity: ${settings.assistantName || "OpenWA CRM Assistant"}${settings.businessName ? ` for ${settings.businessName}` : ""}.`,
+          `Assistant identity: ${settings.assistantName || "Wanie CRM Assistant"}${settings.businessName ? ` for ${settings.businessName}` : ""}.`,
           `Persona and brand voice: ${settings.persona || "Ramah, jelas, profesional, dan membantu."}`,
           `Agent behavior and SOP: ${settings.agentInstructions || "Pahami kebutuhan customer, jawab ringkas dan membantu, gunakan knowledge base bila tersedia, dan arahkan ke admin bila informasi tidak cukup."}`,
           "Answer in Indonesian using only the provided knowledge snippets.",

@@ -1,20 +1,18 @@
-<p align="center">
-  <img src="./logo-long.png" alt="OpenWA" width="320" />
-</p>
+# Wanie
 
-# OpenWA
+**AI messaging CRM for WhatsApp, Telegram, and external apps.**
 
-OpenWA is a self-hosted WhatsApp workspace that ships as a CLI package. It combines a Next.js dashboard, an Express API, Prisma-backed data access, Socket.IO realtime updates, media uploads, and runtime API documentation in a single local-first package.
+Wanie is a self-hosted customer messaging CRM that ships as a CLI package. It combines a Next.js dashboard, an Express API, Prisma-backed data access, Socket.IO realtime updates, media uploads, runtime API documentation, and AI automation in a single local-first package.
 
-OpenWA is also designed to be **AI-agent-ready**. The runtime exposes agent-friendly documentation, machine-readable OpenAPI output, and API key authentication so AI agents and automation tools can discover capabilities and interact with the workspace without reverse-engineering the app.
+Wanie is also designed to be **AI-agent-ready**. The runtime exposes agent-friendly documentation, machine-readable OpenAPI output, and API key authentication so AI agents and automation tools can discover capabilities and interact with the workspace without reverse-engineering the app.
 
-OpenWA also includes a **CRM AI workspace** for customer support automation. You can upload knowledge-base documents, generate AI drafts, enable guarded auto-replies, and serve both WhatsApp and Telegram customer conversations from the same dashboard.
+Wanie also includes a **CRM AI workspace** for customer support automation. You can upload knowledge-base documents, generate AI drafts, enable guarded auto-replies, and serve both WhatsApp and Telegram customer conversations from the same dashboard.
 
 ## Disclaimer
 
-OpenWA is an independent open source project. It is **not** an official WhatsApp product and is **not** affiliated with, endorsed by, or sponsored by Meta or WhatsApp.
+Wanie is an independent open source project. It is **not** an official WhatsApp product and is **not** affiliated with, endorsed by, or sponsored by Meta or WhatsApp.
 
-If you use OpenWA with WhatsApp, make sure your usage complies with the terms, policies, and legal requirements that apply in your environment.
+If you use Wanie with WhatsApp, make sure your usage complies with the terms, policies, and legal requirements that apply in your environment.
 
 ## Features
 
@@ -41,16 +39,16 @@ If you use OpenWA with WhatsApp, make sure your usage complies with the terms, p
 ## Screenshots
 
 <p align="center">
-  <img src="./Screenshot-1.png" alt="OpenWA screenshot 1" width="720" />
+  <img src="./Screenshot-1.png" alt="Wanie screenshot 1" width="720" />
 </p>
 
 <p align="center">
-  <img src="./Screenshot-2.png" alt="OpenWA screenshot 2" width="720" />
+  <img src="./Screenshot-2.png" alt="Wanie screenshot 2" width="720" />
 </p>
 
 ## Telegram Bot Integration
 
-- Setup a Telegram bot using a BotFather token and connect it to OpenWA.
+- Setup a Telegram bot using a BotFather token and connect it to Wanie.
 - Restrict bot control to specific Telegram chat IDs with admin allowlist support from **Settings → Telegram** or the assistant tool `configure_telegram_admins`.
 - Use `/new` from Telegram to start a fresh assistant chat context.
 - Monitor the bot status via the assistant tool `get_telegram_bot_status`.
@@ -59,7 +57,7 @@ If you use OpenWA with WhatsApp, make sure your usage complies with the terms, p
 
 ## WhatsApp Official API / Meta Cloud API
 
-OpenWA can run WhatsApp devices through either WhatsApp Web QR pairing or the WhatsApp Official API / Meta Cloud API. Official API devices use the same dashboard inbox, CRM automation, outbound delivery queue, media storage, webhooks, and API endpoints as WhatsApp Web devices.
+Wanie can run WhatsApp devices through either WhatsApp Web QR pairing or the WhatsApp Official API / Meta Cloud API. Official API devices use the same dashboard inbox, CRM automation, outbound delivery queue, media storage, webhooks, and API endpoints as WhatsApp Web devices.
 
 To add an official API device:
 
@@ -67,16 +65,16 @@ To add an official API device:
 2. Choose **WhatsApp Official API**.
 3. Enter the Meta Phone Number ID, access token, and webhook verify token.
 4. Optionally enter the WhatsApp Business Account ID and App Secret.
-5. In Meta Developer settings, set the callback URL to `https://<your-openwa-host>/api/whatsapp/meta/webhook`.
+5. In Meta Developer settings, set the callback URL to `https://<your-wanie-host>/api/whatsapp/meta/webhook`.
 6. Subscribe the app to WhatsApp message and status webhook events.
 
-OpenWA stores the access token and app secret encrypted in runtime storage. Incoming text, media, location, button, and interactive WhatsApp messages are converted into normal OpenWA chats. Outbound text and uploaded media can be sent through the same dashboard composer and API routes.
+Wanie stores the access token and app secret encrypted in runtime storage. Incoming text, media, location, button, and interactive WhatsApp messages are converted into normal Wanie chats. Outbound text and uploaded media can be sent through the same dashboard composer and API routes.
 
 Meta's WhatsApp messaging policies still apply. Free-form outbound replies are intended for the customer service window; template-message sending for conversations outside that window is not implemented yet.
 
 ## CRM AI Workspace
 
-OpenWA includes a CRM page for support teams that want AI-assisted replies grounded in uploaded knowledge. The CRM works with regular WhatsApp chats and with Telegram customer chats created through the Telegram bot integration.
+Wanie includes a CRM page for support teams that want AI-assisted replies grounded in uploaded knowledge. The CRM works with regular WhatsApp chats and with Telegram customer chats created through the Telegram bot integration.
 
 ### CRM automation modes
 
@@ -86,7 +84,7 @@ OpenWA includes a CRM page for support teams that want AI-assisted replies groun
 
 Automation can be configured globally, overridden per WhatsApp session, and overridden per individual chat. Chat-level settings take priority over session settings, and session settings take priority over the global default.
 
-For Telegram bot chats, **Off** stores non-admin customer messages in the dashboard and replies with a short notice that automation is inactive. **Draft only** and **Auto send** route the Telegram conversation through the CRM knowledge-base workflow. Only Telegram chat IDs in the admin allowlist can use the regular OpenWA Assistant/AI agent flow.
+For Telegram bot chats, **Off** stores non-admin customer messages in the dashboard and replies with a short notice that automation is inactive. **Draft only** and **Auto send** route the Telegram conversation through the CRM knowledge-base workflow. Only Telegram chat IDs in the admin allowlist can use the regular Wanie Assistant/AI agent flow.
 
 ### Knowledge base
 
@@ -102,15 +100,15 @@ CRM replies are grounded in uploaded knowledge documents. Supported file types i
 
 CSV files are converted into row/column-labeled text so service data such as `Nama Layanan`, `Harga Dasar`, and `Durasi (mnt)` can be retrieved reliably. Existing documents can be reindexed from the CRM page after parser changes, embedding configuration changes, or updated source files.
 
-The CRM knowledge page supports multiple file uploads in one action. If an uploaded file has the same original filename as an existing knowledge document, OpenWA automatically replaces the old document and rebuilds its chunks from the new file.
+The CRM knowledge page supports multiple file uploads in one action. If an uploaded file has the same original filename as an existing knowledge document, Wanie automatically replaces the old document and rebuilds its chunks from the new file.
 
 ### Auto-reply behavior
 
-- OpenWA waits briefly after the latest inbound message before generating a CRM auto-reply, so rapid messages like `halo`, `harga berapa`, and `bisa order sekarang` are answered as one context.
+- Wanie waits briefly after the latest inbound message before generating a CRM auto-reply, so rapid messages like `halo`, `harga berapa`, and `bisa order sekarang` are answered as one context.
 - AI generation and outbound delivery are retried a few times for transient provider or network failures.
-- If AI generation still fails, OpenWA sends the configured CRM fallback message.
+- If AI generation still fails, Wanie sends the configured CRM fallback message.
 - Normal follow-up questions are still answered until the daily per-chat reply limit is reached.
-- Abuse protection starts only when a chat sends too many inbound messages in a short window. During abuse cooldown, OpenWA skips expensive AI work and sends a short notice to the customer.
+- Abuse protection starts only when a chat sends too many inbound messages in a short window. During abuse cooldown, Wanie skips expensive AI work and sends a short notice to the customer.
 
 ### CRM activity logs
 
@@ -128,25 +126,25 @@ CRM activity records generated drafts, auto-sent replies, skipped replies, deliv
 
 ## Acknowledgements
 
-Special thanks to [`whatsapp-web.js`](https://wwebjs.dev/). OpenWA builds on top of that excellent open source project for WhatsApp Web integration.
+Special thanks to [`whatsapp-web.js`](https://wwebjs.dev/). Wanie builds on top of that excellent open source project for WhatsApp Web integration.
 
 If you find this project useful, please also support and star the `whatsapp-web.js` project.
 
 ## Getting started
 
-Install OpenWA globally:
+Install Wanie globally:
 
 ```bash
-npm i -g @adens/openwa
+npm i -g @adens/wanie
 ```
 
-Run OpenWA:
+Run Wanie:
 
 ```bash
-openwa
+wanie
 ```
 
-When OpenWA starts, it launches the local frontend and backend runtime and automatically opens your browser to the OpenWA frontend dashboard by default.
+When Wanie starts, it launches the local frontend and backend runtime and automatically opens your browser to the Wanie frontend dashboard by default.
 
 If you are working on this repository locally instead of using the published CLI package:
 
@@ -158,7 +156,7 @@ npm start
 
 ## Run with Docker Compose
 
-OpenWA also supports running with Docker Compose for a portable local deployment. From the repository root:
+Wanie also supports running with Docker Compose for a portable local deployment. From the repository root:
 
 ```bash
 docker compose up --build
@@ -180,24 +178,24 @@ docker compose down
 
 ## CLI reset commands
 
-OpenWA includes a built-in reset helper for administration tasks.
+Wanie includes a built-in reset helper for administration tasks.
 
 ```bash
-openwa reset
+wanie reset
 ```
 
-When you run `openwa reset`, you can choose:
+When you run `wanie reset`, you can choose:
 
 - `1)` Reset Password — set a new password for an existing user by email.
-- `2)` Reset All Data — delete all runtime data under the OpenWA data directory and recreate runtime folders.
+- `2)` Reset All Data — delete all runtime data under the Wanie data directory and recreate runtime folders.
 
 ## First-run registration behavior
 
-On first startup, OpenWA allows registration for the initial admin user. After the first user is created, registration is automatically blocked unless `allowRegistration` is explicitly enabled again via **Settings**.
+On first startup, Wanie allows registration for the initial admin user. After the first user is created, registration is automatically blocked unless `allowRegistration` is explicitly enabled again via **Settings**.
 
 ## Default runtime
 
-By default, OpenWA starts two local services:
+By default, Wanie starts two local services:
 
 - Frontend dashboard: `http://localhost:55111`
 - Backend API: `http://localhost:55222`
@@ -206,17 +204,17 @@ Important runtime endpoints such as docs, health, and version are also proxied t
 
 ## Environment configuration
 
-OpenWA reads `.env` from the repository root.
+Wanie reads `.env` from the repository root.
 
 ### CLI / Local install
 
 For local CLI installs, the only required environment variable is:
 
 ```env
-OPENWA_JWT_SECRET=your_secret_key_here
+WANIE_JWT_SECRET=your_secret_key_here
 ```
 
-The first `openwa` run will prompt you for this secret and save it into `.env` if it is missing.
+The first `wanie` run will prompt you for this secret and save it into `.env` if it is missing.
 
 ### Docker / Server deployment
 
@@ -226,11 +224,11 @@ For Docker Compose or server deployment, you can configure additional runtime va
 HOST=0.0.0.0
 FE_PORT=55111
 BE_PORT=55222
-OPENWA_DATA_DIR=/app/storage
-OPENWA_JWT_SECRET=your_secret_key_here
-OPENWA_AUTO_OPEN=false
-OPENWA_USE_WWEBJS=true
-OPENWA_ALLOW_MOCK=false
+WANIE_DATA_DIR=/app/storage
+WANIE_JWT_SECRET=your_secret_key_here
+WANIE_AUTO_OPEN=false
+WANIE_USE_WWEBJS=true
+WANIE_ALLOW_MOCK=false
 OUTBOUND_DELIVERY_MAX_ATTEMPTS=5
 OUTBOUND_DELIVERY_WORKER_INTERVAL_MS=5000
 WEBHOOK_DELIVERY_MAX_ATTEMPTS=3
@@ -245,17 +243,17 @@ WHATSAPP_META_GRAPH_VERSION=v23.0
 DATABASE_URL=file:./storage/database/openwa.db
 ```
 
-When running in Docker, `OPENWA_DATA_DIR` should point to the mounted storage volume (`/app/storage` by default). OpenWA will automatically derive frontend and backend URLs from `HOST`, `FE_PORT`, and `BE_PORT`.
+When running in Docker, `WANIE_DATA_DIR` should point to the mounted storage volume (`/app/storage` by default). Wanie will automatically derive frontend and backend URLs from `HOST`, `FE_PORT`, and `BE_PORT`.
 
-If `OPENWA_JWT_SECRET` is not set, the first `openwa` run will prompt you to enter it and save it into `.env` automatically. For production use, set a strong secret before starting OpenWA.
+If `WANIE_JWT_SECRET` is not set, the first `wanie` run will prompt you to enter it and save it into `.env` automatically. For production use, set a strong secret before starting Wanie. Legacy `OPENWA_*` environment variables are still accepted for existing deployments.
 
 ### Configuration Notes
 
-- Set `OPENWA_AUTO_OPEN=false` to disable automatic browser opening.
-- Set `OPENWA_USE_WWEBJS=false` to disable the WhatsApp Web adapter.
-- Set `OPENWA_ALLOW_MOCK=true` to allow the mock adapter for testing.
-- `OPENWA_LLM_PROVIDER` specifies the default LLM for assistant operations (openai, anthropic, ollama, openrouter).
-- `OPENWA_TERMINAL_ALLOWLIST` restricts which terminal commands can auto-execute without manual approval (space-separated patterns).
+- Set `WANIE_AUTO_OPEN=false` to disable automatic browser opening.
+- Set `WANIE_USE_WWEBJS=false` to disable the WhatsApp Web adapter.
+- Set `WANIE_ALLOW_MOCK=true` to allow the mock adapter for testing.
+- LLM providers are normally configured from **Settings → AI Providers**.
+- `WANIE_TERMINAL_ALLOWLIST` restricts which terminal commands can auto-execute without manual approval (space-separated patterns).
 - `OUTBOUND_DELIVERY_MAX_ATTEMPTS` controls capped retry for WhatsApp and Telegram sends.
 - `OUTBOUND_DELIVERY_BACKOFF_MS` controls outbound retry delays as comma-separated milliseconds.
 - `WEBHOOK_DELIVERY_MAX_ATTEMPTS` controls capped retry for incoming-message webhook delivery.
@@ -269,7 +267,7 @@ If `OPENWA_JWT_SECRET` is not set, the first `openwa` run will prompt you to ent
 
 ## Typical usage flow
 
-1. Start OpenWA.
+1. Start Wanie.
 2. Open the dashboard at `http://localhost:55111` or your deployment host.
 3. Register the first user or log in.
 4. Create a new WhatsApp session from the dashboard.
@@ -281,7 +279,7 @@ If `OPENWA_JWT_SECRET` is not set, the first `openwa` run will prompt you to ent
 
 ## AI Assistant Capabilities
 
-OpenWA includes a built-in AI assistant that can manage WhatsApp sessions, LLM configurations, and extend functionality via registered tools. The assistant is accessible via WebSocket for real-time chat in the dashboard and via HTTP API for programmatic access.
+Wanie includes a built-in AI assistant that can manage WhatsApp sessions, LLM configurations, and extend functionality via registered tools. The assistant is accessible via WebSocket for real-time chat in the dashboard and via HTTP API for programmatic access.
 
 ### Default Assistant Tools
 
@@ -292,7 +290,7 @@ The assistant comes with these built-in skills:
 - **`update_assistant`** — Customize the assistant's display name, avatar, and personality.
 - **`create_api_key`** — Generate API keys for external integrations.
 - **`update_webhook`** — Configure incoming webhook URL and authentication key.
-- **`setup_gateway_integration`** — Configure OpenWA as an external app gateway from chat: set webhook URL/key, optionally create an API key, and turn internal CRM automation off.
+- **`setup_gateway_integration`** — Configure Wanie as an external app gateway from chat: set webhook URL/key, optionally create an API key, and turn internal CRM automation off.
 - **`update_tools_md`** — Register and document new external tools.
 - **`get_webpage`** — Fetch and parse webpage content (with fallback to browser rendering).
 - **`open_browser`** — Launch headless browser for dynamic content extraction.
@@ -361,7 +359,7 @@ curl -X POST 'http://localhost:55111/api/agent/invoke-tool/<tool_id>' \
 - **Dashboard-only registration**: Tool registration requires a valid dashboard JWT.
 - **Invocation control**: Each tool has an `invokeEnabled` flag determining if non-owner users can call it.
 - **Approval modes**: Terminal execution supports `auto` (trusted allowlist) and `manual` (requires approval).
-- **Terminal allowlist**: Set `OPENWA_TERMINAL_ALLOWLIST` environment variable to restrict auto-executable commands.
+- **Terminal allowlist**: Set `WANIE_TERMINAL_ALLOWLIST` environment variable to restrict auto-executable commands.
 - **Audit logging**: All tool invocations are logged for accountability.
 
 ### Assistant Configuration
@@ -370,16 +368,15 @@ Configure assistant behavior via environment variables:
 
 ```env
 # Terminal command allowlist for auto-execution (space-separated patterns)
-OPENWA_TERMINAL_ALLOWLIST="npm run build npm test node --version"
+WANIE_TERMINAL_ALLOWLIST="npm run build npm test node --version"
 
 # LLM provider settings
-OPENWA_LLM_PROVIDER=openai
-OPENWA_OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=sk-...
 ```
 
 ## Runtime documentation
 
-OpenWA exposes comprehensive runtime documentation for both users and AI agents:
+Wanie exposes comprehensive runtime documentation for both users and AI agents:
 
 - **Swagger UI**: `GET /docs` — Interactive API explorer with try-it-out functionality.
 - **OpenAPI JSON**: `GET /docs/json` — Machine-readable API schema for code generation and integrations.
@@ -398,7 +395,7 @@ This architecture is designed for AI agents and automation platforms:
 4. The agent authenticates with the API key header and immediately starts interacting with chats, contacts, sessions, and messages.
 5. The agent can discover and register additional external tools via the `/api/agent/register-tool-url` endpoint.
 
-This makes OpenWA a strong fit for AI agents: full API documentation, extensible tool registration, and secure authentication without reverse-engineering the app.
+This makes Wanie a strong fit for AI agents: full API documentation, extensible tool registration, and secure authentication without reverse-engineering the app.
 
 ## API summary
 
@@ -450,9 +447,9 @@ Returns the initial workspace payload, including the current user, sessions, cha
 - `DELETE /api/messages/{messageId}`
 - `POST /api/messages/{messageId}/forward`
 
-> Note: `sessionId` is required when sending a new WhatsApp message by `phoneNumber`. Replies to an existing chat can use `/api/chats/{chatId}/messages/send`; OpenWA uses the chat transport, including Telegram chats whose receiver starts with `tg:`.
+> Note: `sessionId` is required when sending a new WhatsApp message by `phoneNumber`. Replies to an existing chat can use `/api/chats/{chatId}/messages/send`; Wanie uses the chat transport, including Telegram chats whose receiver starts with `tg:`.
 
-Outbound sends are queued durably and retried with backoff when WhatsApp or Telegram delivery fails. OpenWA stops after 5 attempts by default and marks the delivery job as `failed`; use the retry endpoint to reset and try again manually.
+Outbound sends are queued durably and retried with backoff when WhatsApp or Telegram delivery fails. Wanie stops after 5 attempts by default and marks the delivery job as `failed`; use the retry endpoint to reset and try again manually.
 
 `GET /api/chats/{chatId}/messages` supports:
 
@@ -478,11 +475,11 @@ Upload a file first, then use the returned `mediaFileId` when calling the send m
 
 CRM settings include automation mode, assistant name, business name, persona, fallback message, knowledge retrieval settings, abuse cooldown, and daily reply limits.
 
-When an admin replies to a customer from the OpenWA dashboard, the API, or the paired WhatsApp app, CRM auto-reply pauses for that chat temporarily. The default pause is 30 minutes and can be changed with `adminPauseSeconds` in CRM settings.
+When an admin replies to a customer from the Wanie dashboard, the API, or the paired WhatsApp app, CRM auto-reply pauses for that chat temporarily. The default pause is 30 minutes and can be changed with `adminPauseSeconds` in CRM settings.
 
 WhatsApp group chats are not auto-replied by default, even when the global or session mode is **Auto send**. Set the specific group chat override to **Auto send** to enable auto-reply for that group.
 
-To use OpenWA as a gateway/API only, set internal CRM automation mode to **Off**, configure an incoming webhook, and let the external app reply through `/api/chats/{chatId}/messages/send` or `/api/messages/send`.
+To use Wanie as a gateway/API only, set internal CRM automation mode to **Off**, configure an incoming webhook, and let the external app reply through `/api/chats/{chatId}/messages/send` or `/api/messages/send`.
 
 ### Knowledge
 
@@ -498,7 +495,7 @@ Use reindex when source parsing or embedding settings change. Reindexing extract
 
 ## API authentication
 
-OpenWA supports two main authentication modes.
+Wanie supports two main authentication modes.
 
 ### JWT bearer
 
@@ -524,23 +521,24 @@ Recommended for agents, automation, and external integrations.
 
 ## Webhooks
 
-OpenWA can forward incoming customer messages to an external application such as a CRM, ERP, helpdesk, or AI service with its own knowledge base.
+Wanie can forward incoming customer messages to an external application such as a CRM, ERP, helpdesk, or AI service with its own knowledge base.
 
 Configure the webhook from **Settings -> Webhooks** or with:
 
 - `GET /api/webhook` — read the current webhook.
-- `POST /api/webhook` — set `{ "url": "https://example.com/openwa-webhook", "apiKey": "shared-secret" }`.
+- `POST /api/webhook` — set `{ "url": "https://example.com/wanie-webhook", "apiKey": "shared-secret" }`.
 - `DELETE /api/webhook` — remove the webhook.
 - `POST /api/webhook/test` — send a synthetic `webhook.test` payload to the configured URL.
 - `GET /api/webhook/deliveries` — list recent webhook delivery attempts.
 - `POST /api/webhook/deliveries/{deliveryId}/retry` — replay a stored webhook payload.
 
-When a WhatsApp or non-admin Telegram customer message arrives, OpenWA sends:
+When a WhatsApp or non-admin Telegram customer message arrives, Wanie sends:
 
 ```http
 POST <your-webhook-url>
 Content-Type: application/json
-x-openwa-webhook-key: <apiKey configured in OpenWA>
+x-wanie-webhook-key: <apiKey configured in Wanie>
+x-openwa-webhook-key: <same apiKey, sent for backward compatibility>
 ```
 
 Payload shape:
@@ -548,7 +546,7 @@ Payload shape:
 ```json
 {
   "chat": {
-    "id": "chat_id_from_openwa",
+    "id": "chat_id_from_wanie",
     "title": "Customer Name",
     "sessionId": "whatsapp_session_id_or_null_for_telegram",
     "contact": {
@@ -556,8 +554,8 @@ Payload shape:
     }
   },
   "message": {
-    "id": "message_id_from_openwa",
-    "chatId": "chat_id_from_openwa",
+    "id": "message_id_from_wanie",
+    "chatId": "chat_id_from_wanie",
     "sessionId": "whatsapp_session_id_or_null_for_telegram",
     "sender": "6281234567890@c.us or tg:123456789",
     "receiver": "your_whatsapp_or_telegram_target",
@@ -570,20 +568,21 @@ Payload shape:
 }
 ```
 
-The external app should verify `x-openwa-webhook-key`, store `chat.id`, and reply through the API.
+The external app should verify `x-wanie-webhook-key` or the legacy `x-openwa-webhook-key`, store `chat.id`, and reply through the API.
 
-Webhook deliveries are logged per user. OpenWA retries transient delivery failures automatically, emits realtime dashboard updates, and failed deliveries can be replayed with the retry endpoint.
+Webhook deliveries are logged per user. Wanie retries transient delivery failures automatically, emits realtime dashboard updates, and failed deliveries can be replayed with the retry endpoint.
 
 Minimal Express receiver:
 
 ```js
-app.post("/openwa-webhook", express.json(), async (req, res) => {
-  if (req.get("x-openwa-webhook-key") !== process.env.OPENWA_WEBHOOK_KEY) {
+app.post("/wanie-webhook", express.json(), async (req, res) => {
+  const key = req.get("x-wanie-webhook-key") || req.get("x-openwa-webhook-key");
+  if (key !== process.env.WANIE_WEBHOOK_KEY) {
     return res.status(401).json({ ok: false });
   }
 
   const { chat, message } = req.body;
-  console.log("Incoming OpenWA message", {
+  console.log("Incoming Wanie message", {
     chatId: chat.id,
     from: message.sender,
     text: message.body,
@@ -628,7 +627,7 @@ curl -X POST http://localhost:55111/api/chats/<chatId>/messages/send \
   -d '{"type":"document","mediaFileId":"<mediaFileId>","body":"Invoice"}'
 ```
 
-For API-only gateway mode, set internal CRM automation to **Off**. OpenWA will still store incoming messages, deliver webhooks, and allow the external app to reply through API endpoints. Non-admin Telegram users do not receive assistant tool access.
+For API-only gateway mode, set internal CRM automation to **Off**. Wanie will still store incoming messages, deliver webhooks, and allow the external app to reply through API endpoints. Non-admin Telegram users do not receive assistant tool access.
 
 ## Agent and Tool APIs
 
@@ -668,12 +667,12 @@ Send a text message to an existing chat:
 curl -X POST http://localhost:55111/api/chats/<chatId>/messages/send \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <api-key>" \
-  -d '{"body":"Hello from OpenWA","type":"text"}'
+  -d '{"body":"Hello from Wanie","type":"text"}'
 ```
 
 Use this same endpoint to reply to a Telegram customer chat received from a webhook.
 
-For WhatsApp Official API chats, use the same endpoint. OpenWA resolves the chat transport and sends through Meta Cloud API automatically.
+For WhatsApp Official API chats, use the same endpoint. Wanie resolves the chat transport and sends through Meta Cloud API automatically.
 
 For media replies, either upload first with `/api/media` and pass `mediaFileId`, or pass a public `mediaUrl` with type `image`, `video`, `audio`, `document`, or `sticker`.
 
@@ -683,7 +682,7 @@ Send a direct message by phone number:
 curl -X POST http://localhost:55111/api/messages/send \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <api-key>" \
-  -d '{"sessionId":"<sessionId>","phoneNumber":"+6281234567890","body":"Hello from OpenWA","type":"text"}'
+  -d '{"sessionId":"<sessionId>","phoneNumber":"+6281234567890","body":"Hello from Wanie","type":"text"}'
 ```
 
 Upload media:

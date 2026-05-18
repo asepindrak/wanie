@@ -7,10 +7,10 @@ function createOpenApiDocument(config) {
   return {
     openapi: "3.1.0",
     info: {
-      title: "OpenWA API",
+      title: "Wanie API",
       version: packageJson.version,
       description:
-        "HTTP API for the local OpenWA runtime, including auth, sessions, chats, contacts, messaging, and runtime metadata. For AI agents, fetch `/docs/readme` first, then authenticate with `X-API-Key` and use the HTTP endpoints directly.",
+        "HTTP API for the local Wanie runtime, including auth, sessions, chats, contacts, messaging, and runtime metadata. For AI agents, fetch `/docs/readme` first, then authenticate with `X-API-Key` and use the HTTP endpoints directly.",
     },
     servers: [
       {
@@ -72,7 +72,7 @@ function createOpenApiDocument(config) {
             bodyTemplate: {
               type: "string",
               description:
-                "Optional JSON body template. Leave empty to send the default OpenWA payload.",
+                "Optional JSON body template. Leave empty to send the default Wanie payload.",
             },
           },
         },
@@ -283,7 +283,7 @@ function createOpenApiDocument(config) {
           tags: ["WhatsApp Official API"],
           summary: "Receive Meta WhatsApp webhook events",
           description:
-            "Receives WhatsApp Cloud API message and status events from Meta. Incoming messages are stored as OpenWA chats/messages and can trigger CRM automation and outbound webhooks.",
+            "Receives WhatsApp Cloud API message and status events from Meta. Incoming messages are stored as Wanie chats/messages and can trigger CRM automation and outbound webhooks.",
           parameters: [
             {
               name: "x-hub-signature-256",
@@ -347,7 +347,7 @@ function createOpenApiDocument(config) {
           tags: ["Webhooks"],
           summary: "Set or update webhook configuration",
           description:
-            "Configure an endpoint to receive incoming messages. By default the runtime sends JSON with `x-openwa-webhook-key`; advanced settings can customize method, headers, and body template.",
+            "Configure an endpoint to receive incoming messages. By default the runtime sends JSON with `x-wanie-webhook-key` and legacy `x-openwa-webhook-key`; advanced settings can customize method, headers, and body template.",
           operationId: "setWebhook",
           security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
           requestBody: {
@@ -360,7 +360,7 @@ function createOpenApiDocument(config) {
                     summary: "Default webhook",
                     value: {
                       enabled: true,
-                      url: "https://example.com/openwa-webhook",
+                      url: "https://example.com/wanie-webhook",
                       apiKey: "S3CR3T",
                     },
                   },
@@ -368,7 +368,7 @@ function createOpenApiDocument(config) {
                     summary: "Webhook with custom headers",
                     value: {
                       enabled: true,
-                      url: "https://example.com/openwa-webhook",
+                      url: "https://example.com/wanie-webhook",
                       method: "POST",
                       headers: {
                         Authorization: "Bearer external-app-token",
@@ -904,7 +904,7 @@ function createOpenApiDocument(config) {
           tags: ["Messages"],
           summary: "Send a message over HTTP",
           description:
-            "Preferred for AI agents and external clients that do not use Socket.IO. OpenWA resolves the chat transport automatically, including WhatsApp Web, WhatsApp Official API, and Telegram chats. Supports text messages directly and media messages via an uploaded `mediaFileId`.",
+            "Preferred for AI agents and external clients that do not use Socket.IO. Wanie resolves the chat transport automatically, including WhatsApp Web, WhatsApp Official API, and Telegram chats. Supports text messages directly and media messages via an uploaded `mediaFileId`.",
           security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
           parameters: [
             {
@@ -1191,7 +1191,7 @@ function createSwaggerHtml() {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OpenWA API Docs</title>
+    <title>Wanie API Docs</title>
     <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
     <style>
       html, body {
@@ -1242,7 +1242,7 @@ or
 `
     : "";
 
-  return `# OpenWA Agent Guide
+  return `# Wanie Agent Guide
 
 Recommended base URL for agents:
 
@@ -1296,13 +1296,13 @@ ${keyBlock}
   - \`POST /api/outbound-deliveries/:deliveryId/retry\` — reset and retry a failed outbound delivery
   - \`POST /api/outbound-deliveries/:deliveryId/cancel\` — stop retrying a queued outbound delivery
 
-> \`sessionId\` is required when sending a new WhatsApp message by \`phoneNumber\`. Replies to an existing chat can use \`/api/chats/:chatId/messages/send\`; OpenWA uses the chat transport, including WhatsApp Web chats, WhatsApp Official API chats, and Telegram chats whose receiver starts with \`tg:\`.
+> \`sessionId\` is required when sending a new WhatsApp message by \`phoneNumber\`. Replies to an existing chat can use \`/api/chats/:chatId/messages/send\`; Wanie uses the chat transport, including WhatsApp Web chats, WhatsApp Official API chats, and Telegram chats whose receiver starts with \`tg:\`.
 
-Outbound sends are queued durably and retried with backoff when WhatsApp Web, WhatsApp Official API, or Telegram delivery fails. OpenWA stops after 5 attempts by default and marks the delivery job as \`failed\`; use the retry endpoint to try again manually.
+Outbound sends are queued durably and retried with backoff when WhatsApp Web, WhatsApp Official API, or Telegram delivery fails. Wanie stops after 5 attempts by default and marks the delivery job as \`failed\`; use the retry endpoint to try again manually.
 
 ## WhatsApp Official API / Meta Cloud API
 
-OpenWA can receive and send WhatsApp messages through either WhatsApp Web QR sessions or WhatsApp Official API / Meta Cloud API sessions.
+Wanie can receive and send WhatsApp messages through either WhatsApp Web QR sessions or WhatsApp Official API / Meta Cloud API sessions.
 
 To add an official API device from the dashboard:
 
@@ -1316,7 +1316,7 @@ To add an official API device from the dashboard:
 ${config.frontendUrl}/api/whatsapp/meta/webhook
 \`\`\`
 
-Official API chats use the same OpenWA chat IDs, message APIs, CRM automation, incoming webhooks, media upload flow, and outbound delivery queue as WhatsApp Web chats. Incoming text, media, location, button, and interactive messages are stored as normal OpenWA messages.
+Official API chats use the same Wanie chat IDs, message APIs, CRM automation, incoming webhooks, media upload flow, and outbound delivery queue as WhatsApp Web chats. Incoming text, media, location, button, and interactive messages are stored as normal Wanie messages.
 
 Free-form outbound replies are intended for Meta's customer service window. Template-message sending for conversations outside that window is not implemented yet.
 
@@ -1351,35 +1351,36 @@ Media message by URL:
 
 ## Webhooks
 
-Use webhooks when an external CRM, ERP, helpdesk, or AI service should receive incoming customer messages and reply through the OpenWA API.
+Use webhooks when an external CRM, ERP, helpdesk, or AI service should receive incoming customer messages and reply through the Wanie API.
 
 Configure webhooks:
 
 - \`GET /api/webhook\` — read current webhook configuration.
-- \`POST /api/webhook\` — set webhook \`{ "url": "https://example.com/openwa-webhook", "apiKey": "shared-secret" }\`.
+- \`POST /api/webhook\` — set webhook \`{ "url": "https://example.com/wanie-webhook", "apiKey": "shared-secret" }\`.
 - \`DELETE /api/webhook\` — remove the webhook.
 - \`POST /api/webhook/test\` — send a synthetic \`webhook.test\` payload to the configured URL.
 - \`GET /api/webhook/deliveries\` — list recent webhook delivery attempts.
 - \`POST /api/webhook/deliveries/:deliveryId/retry\` — replay a stored webhook payload.
 
-OpenWA sends this request to your endpoint:
+Wanie sends this request to your endpoint:
 
 \`\`\`http
 POST <your-webhook-url>
 Content-Type: application/json
-x-openwa-webhook-key: <apiKey configured in OpenWA>
+x-wanie-webhook-key: <apiKey configured in Wanie>
+x-openwa-webhook-key: <same apiKey, sent for backward compatibility>
 \`\`\`
 
-When an incoming WhatsApp Web, WhatsApp Official API, or non-admin Telegram customer message arrives the runtime will \`POST\` a JSON payload to your configured URL with header \`x-openwa-webhook-key\` set to the \`apiKey\` you provided. The payload contains \`chat\` and \`message\` objects described in the OpenAPI schemas. Store \`chat.id\` and reply through \`POST /api/chats/:chatId/messages/send\`.
+When an incoming WhatsApp Web, WhatsApp Official API, or non-admin Telegram customer message arrives the runtime will \`POST\` a JSON payload to your configured URL with header \`x-wanie-webhook-key\` set to the \`apiKey\` you provided. The legacy \`x-openwa-webhook-key\` header is also sent for backward compatibility. The payload contains \`chat\` and \`message\` objects described in the OpenAPI schemas. Store \`chat.id\` and reply through \`POST /api/chats/:chatId/messages/send\`.
 
-Webhook deliveries are logged per user. OpenWA retries transient delivery failures automatically, and failed deliveries can be replayed with the retry endpoint.
+Webhook deliveries are logged per user. Wanie retries transient delivery failures automatically, and failed deliveries can be replayed with the retry endpoint.
 
 Example payload:
 
 \`\`\`json
 {
   "chat": {
-    "id": "chat_id_from_openwa",
+    "id": "chat_id_from_wanie",
     "title": "Customer Name",
     "sessionId": "whatsapp_session_id_or_null_for_telegram",
     "contact": {
@@ -1387,8 +1388,8 @@ Example payload:
     }
   },
   "message": {
-    "id": "message_id_from_openwa",
-    "chatId": "chat_id_from_openwa",
+    "id": "message_id_from_wanie",
+    "chatId": "chat_id_from_wanie",
     "sessionId": "whatsapp_session_id_or_null_for_telegram",
     "sender": "6281234567890@c.us, wa:6281234567890, or tg:123456789",
     "receiver": "your_whatsapp_or_telegram_target",
@@ -1404,13 +1405,14 @@ Example payload:
 Minimal Express receiver:
 
 \`\`\`js
-app.post("/openwa-webhook", express.json(), async (req, res) => {
-  if (req.get("x-openwa-webhook-key") !== process.env.OPENWA_WEBHOOK_KEY) {
+app.post("/wanie-webhook", express.json(), async (req, res) => {
+  const key = req.get("x-wanie-webhook-key") || req.get("x-openwa-webhook-key");
+  if (key !== process.env.WANIE_WEBHOOK_KEY) {
     return res.status(401).json({ ok: false });
   }
 
   const { chat, message } = req.body;
-  console.log("Incoming OpenWA message", {
+  console.log("Incoming Wanie message", {
     chatId: chat.id,
     from: message.sender,
     text: message.body,
@@ -1455,12 +1457,12 @@ curl -X POST ${config.frontendUrl}/api/chats/<chatId>/messages/send \\
   -d '{"type":"document","mediaFileId":"<mediaFileId>","body":"Invoice"}'
 \`\`\`
 
-For API-only gateway mode, set internal CRM automation to **Off**. OpenWA will still store incoming messages, deliver webhooks, and allow the external app to reply through API endpoints.
+For API-only gateway mode, set internal CRM automation to **Off**. Wanie will still store incoming messages, deliver webhooks, and allow the external app to reply through API endpoints.
 
 ## Important notes
 
  - \`/api/auth/register\` and \`/api/auth/login\` are meant for dashboard or human login flows, not the normal agent flow.
- - API keys are created from the OpenWA dashboard under **Settings → API Access**.
+ - API keys are created from the Wanie dashboard under **Settings → API Access**.
  - For media messages, upload the file to \`POST /api/media\` first, then send the returned \`mediaFileId\` through the HTTP send message endpoint.
  - Main business endpoints accept JWT **or** API key authentication, but API key management endpoints only accept dashboard JWT authentication.
 `;

@@ -94,7 +94,7 @@ function ensureWebBuild(config) {
   }
 }
 
-async function startOpenWA({ dev = false } = {}) {
+async function startWanie({ dev = false } = {}) {
   // Dynamic import for ESM module
   const openModule = await import("open");
   const openBrowser = openModule.default || openModule;
@@ -236,7 +236,7 @@ async function startOpenWA({ dev = false } = {}) {
   await sessionManager.hydrate(reconnectableSessions);
   sessionManager.startHealthCheckWorker();
 
-  console.log("OpenWA is running 🚀\n");
+  console.log("Wanie is running 🚀\n");
   console.log(`Dashboard: ${config.frontendUrl}`);
   console.log(`Backend API: ${config.backendUrl}`);
   console.log("WhatsApp Sessions: ready");
@@ -253,7 +253,7 @@ async function startOpenWA({ dev = false } = {}) {
 
   // Graceful shutdown
   const shutdown = async () => {
-    console.log("\n[OpenWA] Shutting down gracefully...");
+    console.log("\n[Wanie] Shutting down gracefully...");
     try {
       outboundDeliveryService.stopWorker();
       outboundDeliveryService.stopCleanupWorker();
@@ -272,5 +272,6 @@ async function startOpenWA({ dev = false } = {}) {
 }
 
 module.exports = {
-  startOpenWA,
+  startWanie,
+  startOpenWA: startWanie,
 };

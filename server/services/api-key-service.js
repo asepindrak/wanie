@@ -15,7 +15,7 @@ function hashApiKey(secret) {
 }
 
 function generateApiKeySecret() {
-  return `owa_live_${crypto.randomBytes(24).toString("hex")}`;
+  return `wanie_live_${crypto.randomBytes(24).toString("hex")}`;
 }
 
 function sanitizeApiKey(record) {

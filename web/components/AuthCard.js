@@ -9,9 +9,9 @@ const initialValues = {
 };
 
 const featureCopy = [
-  "Multi-user workspace for multiple team accounts.",
-  "Multi-device sessions with local QR pairing.",
-  "Chat, media, and realtime updates in one CLI package.",
+  "Unified inbox for WhatsApp, Telegram, and external apps.",
+  "AI auto-replies grounded in your CRM knowledge base.",
+  "Webhooks, REST APIs, media, and realtime updates in one CLI package.",
 ];
 
 export function AuthCard({
@@ -31,14 +31,14 @@ export function AuthCard({
   const [resetMessage, setResetMessage] = useState("");
   const title = useMemo(
     () =>
-      mode === "login" ? "Sign in to OpenWA" : "Create your OpenWA workspace",
+      mode === "login" ? "Sign in to Wanie" : "Create your Wanie workspace",
     [mode],
   );
   const subtitle = useMemo(
     () =>
       mode === "login"
-        ? "Continue to your WhatsApp-style dashboard and manage every session from one place."
-        : "Create the first account to start using the OpenWA inbox, device manager, and session workspace.",
+        ? "Continue to your AI messaging CRM and manage every customer conversation from one place."
+        : "Create the first account to start using the Wanie inbox, device manager, and session workspace.",
     [mode],
   );
 
@@ -55,7 +55,7 @@ export function AuthCard({
 
     try {
       if (!values.email || !resetSecret) {
-        throw new Error("Email and OpenWA secret are required.");
+        throw new Error("Email and Wanie secret are required.");
       }
       await apiFetch("/api/auth/reset-password-request", {
         method: "POST",
@@ -81,7 +81,7 @@ export function AuthCard({
 
     try {
       if (!values.email || !resetSecret || !values.password) {
-        throw new Error("Email, OpenWA secret, and new password are required.");
+        throw new Error("Email, Wanie secret, and new password are required.");
       }
       await apiFetch("/api/auth/reset-password", {
         method: "POST",
@@ -111,14 +111,14 @@ export function AuthCard({
           <div>
             <BrandLogo
               variant="long"
-              alt="OpenWA"
+              alt="Wanie"
               className="h-12 w-auto max-w-[220px]"
             />
             <p className="mt-5 text-xs uppercase tracking-[0.35em] text-brand-100/70">
-              OpenWA Workspace
+              Wanie Workspace
             </p>
             <h1 className="mt-3 text-4xl font-semibold leading-tight text-white">
-              Self-hosted WhatsApp workspace,
+              AI messaging CRM,
               <br />
               packed into one CLI.
             </h1>
@@ -144,7 +144,7 @@ export function AuthCard({
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-2 shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
               <BrandLogo
                 variant="square"
-                alt="OpenWA icon"
+                alt="Wanie icon"
                 className="h-full w-full rounded-xl"
               />
             </div>
@@ -188,11 +188,11 @@ export function AuthCard({
             <div>
               <BrandLogo
                 variant="long"
-                alt="OpenWA"
+                alt="Wanie"
                 className="mb-4 h-10 w-auto max-w-[180px]"
               />
               <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#00a884]">
-                OpenWA Access
+                Wanie Access
               </p>
               <h2 className="mt-3 text-3xl font-semibold leading-tight text-[#111b21]">
                 {title}
@@ -336,10 +336,10 @@ export function AuthCard({
           {mode === "login" && forgotPassword ? (
             <div className="mt-6 rounded-[24px] border border-[#d1d7db] bg-[#f7f8fa] p-4">
               <h3 className="mb-3 text-base font-semibold text-[#111b21]">
-                Reset password with OpenWA secret
+                Reset password with Wanie secret
               </h3>
               <p className="mb-4 text-sm leading-6 text-[#667781]">
-                Enter your account email and the OpenWA secret from your
+                Enter your account email and the Wanie secret from your
                 deployment environment to enable password reset.
               </p>
 
@@ -372,7 +372,7 @@ export function AuthCard({
 
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-[#54656f]">
-                    OpenWA secret
+                    Wanie secret
                   </span>
                   <input
                     type="password"
@@ -435,7 +435,7 @@ export function AuthCard({
               Setup flow
             </p>
             <p className="mt-2 text-sm leading-7 text-[#54656f]">
-              Install once with npm, run `openwa`, sign in to the dashboard, and
+              Install once with npm, run `wanie`, sign in to the dashboard, and
               connect multiple WhatsApp devices from your local browser.
             </p>
           </div>

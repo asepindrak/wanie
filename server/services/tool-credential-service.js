@@ -22,7 +22,11 @@ function ensureFile() {
 }
 
 function getMasterKey() {
-  const source = process.env.OPENWA_SECRET || process.env.JWT_SECRET || null;
+  const source =
+    process.env.WANIE_SECRET ||
+    process.env.OPENWA_SECRET ||
+    process.env.JWT_SECRET ||
+    null;
   if (!source) return null;
   return crypto.createHash("sha256").update(String(source)).digest();
 }

@@ -41,7 +41,7 @@ const defaultCrmSettings = {
   cooldownSeconds: 180,
   adminPauseSeconds: 1800,
   maxAutoRepliesPerChatPerDay: 20,
-  assistantName: "OpenWA CRM Assistant",
+  assistantName: "Wanie CRM Assistant",
   businessName: "",
   persona:
     "Ramah, jelas, profesional, dan membantu. Gunakan Bahasa Indonesia natural.",
@@ -702,7 +702,7 @@ export default function CrmPage() {
     <>
       <AppHead
         title="CRM"
-        description="CRM dashboard untuk inbox, AI reply, automation, dan knowledge base OpenWA."
+        description="CRM dashboard untuk inbox, AI reply, automation, dan knowledge base Wanie."
       />
 
       <main className="min-h-screen bg-[#111b21] text-white">
@@ -711,7 +711,7 @@ export default function CrmPage() {
             <BrandLogo variant="square" className="h-10 w-10 rounded-xl" />
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                OpenWA CRM
+                Wanie CRM
               </p>
               <h1 className="text-lg font-semibold text-white">
                 AI customer workspace
@@ -1569,7 +1569,7 @@ export default function CrmPage() {
                   />
                   <p className="mt-2 text-xs leading-5 text-white/35">
                     Auto-reply pauses per customer after an admin replies from
-                    OpenWA, API, or the paired WhatsApp app.
+                    Wanie, API, or the paired WhatsApp app.
                   </p>
                   <label className="mt-3 block text-xs text-white/45">
                     Max auto replies per chat per day
@@ -1592,7 +1592,7 @@ export default function CrmPage() {
                   </label>
                   <input
                     className="mt-2 w-full rounded-2xl bg-[#111b21] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30"
-                    placeholder="OpenWA CRM Assistant"
+                    placeholder="Wanie CRM Assistant"
                     value={settings.assistantName || ""}
                     onChange={(event) =>
                       setSettings((current) => ({

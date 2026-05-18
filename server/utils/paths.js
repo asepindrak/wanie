@@ -6,24 +6,37 @@ const rootDir = path.resolve(__dirname, "..", "..");
 
 function getDefaultDataDir() {
   // Allow explicit override
-  const explicit = process.env.OPENWA_DATA_DIR || process.env.OPENWA_HOME;
+  const explicit =
+    process.env.WANIE_DATA_DIR ||
+    process.env.WANIE_HOME ||
+    process.env.OPENWA_DATA_DIR ||
+    process.env.OPENWA_HOME;
   if (explicit && String(explicit).trim())
     return path.resolve(String(explicit));
 
   const home = os.homedir();
+  const wanieHome = path.join(home, ".wanie");
+  const legacyOpenWaHome = path.join(home, ".openwa");
 
   // Use a dot-prefixed folder in the user's home directory for all platforms.
-  // This creates a hidden folder on Unix-like systems (e.g. ~/.openwa).
-  return path.join(home, ".openwa");
+  // Existing installs keep using ~/.openwa unless the new ~/.wanie folder exists
+  // or neither folder exists yet.
+  if (!fs.existsSync(wanieHome) && fs.existsSync(legacyOpenWaHome)) {
+    return legacyOpenWaHome;
+  }
+
+  return wanieHome;
 }
 
 const storageDir = getDefaultDataDir();
 const legacyStorageDir = path.join(rootDir, "storage");
 // Prefer an explicit env override. When not set, default to the user data
-// directory under the user's home (e.g. ~/.openwa/workspaces). This ensures
+// directory under the user's home (e.g. ~/.wanie/workspaces). This ensures
 // agent-run scaffolding targets the per-user data area by default.
-const workspacesDir = process.env.OPENWA_WORKSPACES_DIR
-  ? path.resolve(String(process.env.OPENWA_WORKSPACES_DIR))
+const workspacesDir = process.env.WANIE_WORKSPACES_DIR
+  ? path.resolve(String(process.env.WANIE_WORKSPACES_DIR))
+  : process.env.OPENWA_WORKSPACES_DIR
+    ? path.resolve(String(process.env.OPENWA_WORKSPACES_DIR))
   : path.join(storageDir, "workspaces");
 const legacyWorkspacesDir = path.join(rootDir, "workspaces");
 const sessionsDir = path.join(storageDir, "sessions");

@@ -1,40 +1,40 @@
 version: '3.8'
 
 services:
-  openwa:
+  wanie:
     build:
       context: .
       dockerfile: Dockerfile
-    image: 'openwa:latest'
-    container_name: openwa
+    image: 'wanie:latest'
+    container_name: wanie
     env_file:
       - .env
     environment:
       HOST: '0.0.0.0'
       FE_PORT: '55111'
       BE_PORT: '55222'
-      OPENWA_DATA_DIR: /app/storage
-      OPENWA_HOME: /app/storage
-      OPENWA_AUTO_OPEN: '${OPENWA_AUTO_OPEN}'
-      OPENWA_USE_WWEBJS: '${OPENWA_USE_WWEBJS}'
-      OPENWA_ALLOW_MOCK: '${OPENWA_ALLOW_MOCK}'
+      WANIE_DATA_DIR: /app/storage
+      WANIE_HOME: /app/storage
+      WANIE_AUTO_OPEN: '${WANIE_AUTO_OPEN}'
+      WANIE_USE_WWEBJS: '${WANIE_USE_WWEBJS}'
+      WANIE_ALLOW_MOCK: '${WANIE_ALLOW_MOCK}'
       DATABASE_URL: '${DATABASE_URL}'
     volumes:
-      - 'openwa-storage:/app/storage'
+      - 'wanie-storage:/app/storage'
     restart: unless-stopped
 
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.openwa.rule=Host(`openwa.commitflow.space`)"
-      - "traefik.http.routers.openwa.entrypoints=websecure"
-      - "traefik.http.routers.openwa.tls=true"
-      - "traefik.http.services.openwa.loadbalancer.server.port=55111"
+      - "traefik.http.routers.wanie.rule=Host(`wanie.commitflow.space`)"
+      - "traefik.http.routers.wanie.entrypoints=websecure"
+      - "traefik.http.routers.wanie.tls=true"
+      - "traefik.http.services.wanie.loadbalancer.server.port=55111"
 
     networks:
       - coolify
 
 volumes:
-  openwa-storage:
+  wanie-storage:
 
 networks:
   coolify:

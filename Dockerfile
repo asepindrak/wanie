@@ -1,4 +1,4 @@
-# Multi-stage build for OpenWA
+# Multi-stage build for Wanie
 # Builder stage: install dependencies and build the Next frontend
 FROM node:20-slim AS builder
 
@@ -60,7 +60,7 @@ COPY --from=builder /app/web/next.config.js ./web/next.config.js
 # Ensure storage path exists when container starts
 RUN mkdir -p /app/storage/database
 
-ENV OPENWA_DATA_DIR=/app/storage
+ENV WANIE_DATA_DIR=/app/storage
 ENV NODE_ENV=production
 EXPOSE 55111 55222
 CMD ["npm", "start"]

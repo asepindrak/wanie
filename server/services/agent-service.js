@@ -99,7 +99,7 @@ function ensureToolsFile() {
   if (!fs.existsSync(TOOLS_PATH)) {
     const defaultContent = `# TOOLS.md
 
-This file documents tools and skills available to the OpenWA Assistant.
+This file documents tools and skills available to the Wanie Assistant.
 
 Default skills:
 - add_device: create a new WhatsApp session/device for the user. Use this only for WhatsApp device/session requests, QR pairing, or WhatsApp number connection. Never use this for Telegram.
@@ -107,8 +107,8 @@ Default skills:
 - update_assistant: change assistant display name, avatar, or persona.
 - create_api_key: generate an API key for the user.
 - update_webhook: set incoming webhook URL and key.
-- setup_gateway_integration: configure OpenWA as an API gateway for an external CRM/ERP/app by setting webhook URL/key, optionally creating an API key, and turning internal CRM automation off.
-- setup_telegram_bot: set up a Telegram bot to remote OpenWA. Use this for any request that mentions Telegram, Telegram bot, BotFather, bot token, or admin Telegram IDs. User must provide a bot token from @BotFather. Do not create a WhatsApp device/session for Telegram setup.
+- setup_gateway_integration: configure Wanie as an API gateway for an external CRM/ERP/app by setting webhook URL/key, optionally creating an API key, and turning internal CRM automation off.
+- setup_telegram_bot: set up a Telegram bot to remote Wanie. Use this for any request that mentions Telegram, Telegram bot, BotFather, bot token, or admin Telegram IDs. User must provide a bot token from @BotFather. Do not create a WhatsApp device/session for Telegram setup.
 - configure_telegram_admins: set the Telegram admin chat ID allowlist. Use this only for Telegram admin access control.
 - get_telegram_bot_status: check whether the user's Telegram bot is configured and currently running.
 - update_tools_md: update this file with new tools/skills provided by user.
@@ -156,7 +156,7 @@ function ensureIdentityFile() {
   if (!fs.existsSync(IDENTITY_PATH)) {
     const defaultContent = `# IDENTITY.md
 
-This file documents the user's identity and preferences for the OpenWA Assistant.
+This file documents the user's identity and preferences for the Wanie Assistant.
 
 Example fields:
 - name: Your Name
@@ -705,7 +705,7 @@ function buildAssistantSystemPrompt({
 
   const parts = [];
   parts.push(
-    `You are ${assistantDisplayName}, an autonomous OpenWA assistant. Your goal is to complete user tasks by planning and executing multiple steps using available tools.`,
+    `You are ${assistantDisplayName}, an autonomous Wanie assistant. Your goal is to complete user tasks by planning and executing multiple steps using available tools.`,
   );
   if (personaSection) parts.push(personaSection);
   parts.push("Assistant profile:");
@@ -775,7 +775,7 @@ function buildAssistantSystemPrompt({
     "8. Telegram Setup: If the user asks to set up Telegram, do not create a WhatsApp session and do not show a WhatsApp QR. Ask the user to create a bot with BotFather and paste the bot token. Use `setup_telegram_bot` with the token to start the bot. If they want access restricted, configure admin Telegram IDs later with `configure_telegram_admins`.",
   );
   parts.push(
-    "9. API Gateway Setup: If the user wants OpenWA to integrate with an external CRM, ERP, helpdesk, or app as a messaging gateway, ask for the external webhook URL and shared webhook secret if missing. Use `setup_gateway_integration` to set the webhook, create an API key for the external app, and turn internal CRM automation off. Tell the user the returned API key secret is shown only once and must be saved in the external app.",
+    "9. API Gateway Setup: If the user wants Wanie to integrate with an external CRM, ERP, helpdesk, or app as a messaging gateway, ask for the external webhook URL and shared webhook secret if missing. Use `setup_gateway_integration` to set the webhook, create an API key for the external app, and turn internal CRM automation off. Tell the user the returned API key secret is shown only once and must be saved in the external app.",
   );
   parts.push("");
   parts.push(`Available tools: ${toolsList}.`);
@@ -1029,7 +1029,7 @@ const tools = {
     }
 
     const assistantSender = "openwa:assistant";
-    const assistantDisplayName = "OpenWA Assistant";
+    const assistantDisplayName = "Wanie Assistant";
 
     // Only create a companion chat if we're not already in an assistant chat,
     // or if the user specifically requested it (though currently we just default to not
@@ -1351,7 +1351,7 @@ const tools = {
         openapi: "/docs/json",
       },
       message:
-        "OpenWA gateway integration is configured. Save the API key secret in the external app; it is shown only once. The external app should verify x-openwa-webhook-key, store chat.id, and reply through POST /api/chats/{chatId}/messages/send.",
+        "Wanie gateway integration is configured. Save the API key secret in the external app; it is shown only once. The external app should verify x-wanie-webhook-key, store chat.id, and reply through POST /api/chats/{chatId}/messages/send.",
     };
   },
   run_terminal: async (userId, args, ctx) => {
@@ -1623,8 +1623,8 @@ const tools = {
       ok: true,
       message:
         normalizedAdminIds.length > 0
-          ? `Telegram Bot is running now, and the authorized Telegram chat IDs have been saved: ${normalizedAdminIds.join(", ")}. You can now control OpenWA using the bot from those chats.`
-          : "Telegram Bot is running now, and the token has been saved. You can now remote OpenWA via your Telegram bot. If you want to restrict access later, send the admin chat IDs using configure_telegram_admins.",
+          ? `Telegram Bot is running now, and the authorized Telegram chat IDs have been saved: ${normalizedAdminIds.join(", ")}. You can now control Wanie using the bot from those chats.`
+          : "Telegram Bot is running now, and the token has been saved. You can now remote Wanie via your Telegram bot. If you want to restrict access later, send the admin chat IDs using configure_telegram_admins.",
       adminTelegramIds: normalizedAdminIds,
     };
   },
@@ -1666,7 +1666,7 @@ const tools = {
       message: isRunning
         ? "Telegram bot is currently running."
         : savedToken && savedToken.apiKey
-          ? "Telegram bot is configured but not currently running. Restart the OpenWA process to launch it, or call setup_telegram_bot again."
+          ? "Telegram bot is configured but not currently running. Restart the Wanie process to launch it, or call setup_telegram_bot again."
           : "Telegram bot has not been configured yet.",
     };
   },
@@ -1855,7 +1855,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
     await sendAssistantMessage(
       userId,
       "openwa:assistant",
-      "OpenWA Assistant",
+      "Wanie Assistant",
       "Password reset cancelled. If you want to reset again, send /reset_password.",
       io,
       chatId,
@@ -1873,7 +1873,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
       await sendAssistantMessage(
         userId,
         "openwa:assistant",
-        "OpenWA Assistant",
+        "Wanie Assistant",
         "✅ Password berhasil direset. Anda sekarang bisa login dengan kata sandi baru tersebut.",
         io,
         chatId,
@@ -1882,7 +1882,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
       await sendAssistantMessage(
         userId,
         "openwa:assistant",
-        "OpenWA Assistant",
+        "Wanie Assistant",
         `Gagal mereset password: ${error.message}`,
         io,
         chatId,
@@ -1895,7 +1895,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
     await sendAssistantMessage(
       userId,
       "openwa:assistant",
-      "OpenWA Assistant",
+      "Wanie Assistant",
       "Silakan kirim /new_password <kata sandi baru> atau ketik /cancel_reset untuk membatalkan.",
       io,
       chatId,
@@ -1908,8 +1908,8 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
     await sendAssistantMessage(
       userId,
       "openwa:assistant",
-      "OpenWA Assistant",
-      "Silakan kirim `/new_password <kata sandi baru>` untuk mereset password akun OpenWA ini.",
+      "Wanie Assistant",
+      "Silakan kirim `/new_password <kata sandi baru>` untuk mereset password akun Wanie ini.",
       io,
       chatId,
     );
@@ -1939,7 +1939,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
   const assistantDisplayName =
     !isTelegramRemoteAssistant && chatContact?.displayName
       ? chatContact.displayName
-      : "OpenWA Assistant";
+      : "Wanie Assistant";
   try {
     io.to(`user:${userId}`).emit("new_message", userResult.message);
     io.to(`user:${userId}`).emit("contact_list_update", userResult.chat);

@@ -620,7 +620,7 @@ export const ChatWindow = forwardRef(function ChatWindow(
     },
     {
       label: "Integrate Telegram",
-      message: "How can I remote OpenWA via Telegram?",
+      message: "How can I remote Wanie via Telegram?",
       icon: "🤖",
     },
     {
@@ -1238,10 +1238,9 @@ export const ChatWindow = forwardRef(function ChatWindow(
             type="button"
             title="Open Dashboard CRM"
             aria-label="Open Dashboard CRM"
-            className="relative flex h-10 items-center justify-center gap-2 rounded-full bg-amber-400 px-3 text-sm font-semibold text-[#1d1600] shadow-[0_0_22px_rgba(251,191,36,0.42)] ring-1 ring-amber-100/70 transition hover:scale-105 hover:bg-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-200"
+            className="relative flex h-10 items-center justify-center gap-2 overflow-hidden rounded-full bg-amber-400 px-3 text-sm font-semibold text-[#1d1600] shadow-[0_0_14px_rgba(251,191,36,0.28)] ring-1 ring-amber-100/70 transition hover:bg-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-200"
             onClick={onOpenCrm}
           >
-            <span className="absolute inset-0 rounded-full bg-amber-300/35 animate-ping" />
             <MdGroups className="relative h-5 w-5" />
             <span className="relative whitespace-nowrap">Dashboard CRM</span>
           </button>

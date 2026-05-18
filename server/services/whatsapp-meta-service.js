@@ -13,10 +13,12 @@ const GRAPH_VERSION = process.env.WHATSAPP_META_GRAPH_VERSION || "v23.0";
 
 function getEncryptionKey() {
   const secret =
+    process.env.WANIE_META_SECRET_KEY ||
+    process.env.WANIE_ENCRYPTION_KEY ||
     process.env.OPENWA_META_SECRET_KEY ||
     process.env.OPENWA_ENCRYPTION_KEY ||
     process.env.JWT_SECRET ||
-    "openwa-local-meta-secret";
+    "wanie-local-meta-secret";
   return crypto.createHash("sha256").update(String(secret)).digest();
 }
 

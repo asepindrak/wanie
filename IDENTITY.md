@@ -1,6 +1,6 @@
 # IDENTITY.md
 
-This file documents the user's identity and preferences for the OpenWA Assistant.
+This file documents the user's identity and preferences for the Wanie Assistant.
 
 Please edit the fields below so the assistant can use accurate identity/context when replying or taking actions.
 

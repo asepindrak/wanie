@@ -32,10 +32,19 @@ function getConfig({ dev = false } = {}) {
     frontendUrl,
     backendUrl,
     appUrl: frontendUrl,
-    jwtSecret: process.env.OPENWA_JWT_SECRET || "openwa-local-dev-secret",
-    autoOpenBrowser: process.env.OPENWA_AUTO_OPEN !== "false",
-    useWwebjs: process.env.OPENWA_USE_WWEBJS !== "false",
-    allowMockAdapter: process.env.OPENWA_ALLOW_MOCK === "true",
+    jwtSecret:
+      process.env.WANIE_JWT_SECRET ||
+      process.env.OPENWA_JWT_SECRET ||
+      "wanie-local-dev-secret",
+    autoOpenBrowser:
+      (process.env.WANIE_AUTO_OPEN || process.env.OPENWA_AUTO_OPEN) !==
+      "false",
+    useWwebjs:
+      (process.env.WANIE_USE_WWEBJS || process.env.OPENWA_USE_WWEBJS) !==
+      "false",
+    allowMockAdapter:
+      (process.env.WANIE_ALLOW_MOCK || process.env.OPENWA_ALLOW_MOCK) ===
+      "true",
   };
 }
 

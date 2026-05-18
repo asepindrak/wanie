@@ -14,7 +14,7 @@ const defaultSettings = {
   cooldownSeconds: 180,
   adminPauseSeconds: 1800,
   maxAutoRepliesPerChatPerDay: 20,
-  assistantName: "OpenWA CRM Assistant",
+  assistantName: "Wanie CRM Assistant",
   businessName: null,
   persona:
     "Ramah, jelas, profesional, dan membantu. Gunakan Bahasa Indonesia natural.",

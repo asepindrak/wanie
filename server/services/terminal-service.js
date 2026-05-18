@@ -46,9 +46,11 @@ function runShellCommand(command, timeout = 300000, cwd) {
           } catch (e) {}
         }
 
-        // Allow an explicit override via OPENWA_TERMINAL_SHELL env var
+        // Allow an explicit override via WANIE_TERMINAL_SHELL env var.
         const preferredShell = (
-          process.env.OPENWA_TERMINAL_SHELL || ""
+          process.env.WANIE_TERMINAL_SHELL ||
+          process.env.OPENWA_TERMINAL_SHELL ||
+          ""
         ).toLowerCase();
         if (
           (preferredShell === "powershell" || preferredShell === "pwsh") &&
@@ -186,7 +188,11 @@ async function requestExecution(
     `[terminal-service] requestExecution user=${userId} command=${String(command).slice(0, 200)} cwd=${effectiveCwd}`,
   );
   getConfig();
-  const allowlist = (process.env.OPENWA_TERMINAL_ALLOWLIST || "")
+  const allowlist = (
+    process.env.WANIE_TERMINAL_ALLOWLIST ||
+    process.env.OPENWA_TERMINAL_ALLOWLIST ||
+    ""
+  )
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

@@ -1,6 +1,6 @@
 # TOOLS.md
 
-This file documents tools and skills available to the OpenWA Assistant.
+This file documents tools and skills available to the Wanie Assistant.
 
 Purpose: provide a human-readable registry of available assistant tools and examples. The system may append entries here for externally-registered tools (append-only).
 
@@ -11,11 +11,11 @@ Default skills
 - `update_assistant` — Change assistant display name, avatar, or persona.
 - `create_api_key` — Generate an API key for the user.
 - `update_webhook` — Set incoming webhook URL and key.
-- `setup_gateway_integration` — Configure OpenWA as an API gateway for an external CRM/ERP/app by setting webhook URL/key, optionally creating an API key, and turning internal CRM automation off.
+- `setup_gateway_integration` — Configure Wanie as an API gateway for an external CRM/ERP/app by setting webhook URL/key, optionally creating an API key, and turning internal CRM automation off.
 - `update_tools_md` — Append or update human-readable entries in this file when new external tools are registered.
-- `setup_telegram_bot` — Set up a Telegram bot with a BotFather token so OpenWA can be remotely controlled via Telegram.
-- `configure_telegram_admins` — Save authorized Telegram chat IDs to restrict which Telegram users may control OpenWA.
-- `reset_password` — Initiate a password reset flow for the current OpenWA user via agent or Telegram chat. The assistant will ask for a new password and then reset it only for the user owning the bot/chat.
+- `setup_telegram_bot` — Set up a Telegram bot with a BotFather token so Wanie can be remotely controlled via Telegram.
+- `configure_telegram_admins` — Save authorized Telegram chat IDs to restrict which Telegram users may control Wanie.
+- `reset_password` — Initiate a password reset flow for the current Wanie user via agent or Telegram chat. The assistant will ask for a new password and then reset it only for the user owning the bot/chat.
 - `cancel_reset` — Cancel an in-progress password reset flow.
 - `get_telegram_bot_status` — Check whether the Telegram bot is currently configured and running.
 - `get_webpage` — Fetch and read the content of a URL (static or dynamic).
@@ -36,7 +36,7 @@ Detailed examples for commonly-used tools
 
 - `setup_telegram_bot` (setup_telegram_bot)
 
-  Description: configures and starts the Telegram bot using a BotFather token, enabling remote OpenWA control from Telegram chats.
+  Description: configures and starts the Telegram bot using a BotFather token, enabling remote Wanie control from Telegram chats.
 
   Example request:
 
@@ -49,7 +49,7 @@ Detailed examples for commonly-used tools
 
 - `configure_telegram_admins` (configure_telegram_admins)
 
-  Description: saves authorized Telegram chat IDs that are allowed to send commands to the OpenWA Telegram bot.
+  Description: saves authorized Telegram chat IDs that are allowed to send commands to the Wanie Telegram bot.
 
   Example request:
 
@@ -71,7 +71,7 @@ Detailed examples for commonly-used tools
 
 - `reset_password` (reset_password)
 
-  Description: initiates a password reset flow for the current OpenWA user via agent or Telegram. The assistant should confirm the request and prompt the user to send the new password using `/new_password <password>`.
+  Description: initiates a password reset flow for the current Wanie user via agent or Telegram. The assistant should confirm the request and prompt the user to send the new password using `/new_password <password>`.
 
   Example usage in chat:
 
@@ -131,7 +131,7 @@ Detailed examples for commonly-used tools
   ```
 
   Notes:
-  - Auto-execution requires configuration of `OPENWA_TERMINAL_ALLOWLIST` on the host.
+  - Auto-execution requires configuration of `WANIE_TERMINAL_ALLOWLIST` on the host.
   - Prefer `manual` approval for destructive or network-facing commands.
 
 - `search_messages` (search_messages)
@@ -169,7 +169,7 @@ Detailed examples for commonly-used tools
   Notes:
   - The coding agent does not depend on an external Copilot CLI; it uses the configured LLM provider.
   - All file operations and terminal commands are executed relative to the `workspaces/` directory.
-  - Auto-execution of terminal steps depends on server settings (`OPENWA_TERMINAL_ALLOWLIST` and user preferences). When the agent requests terminal execution it may set `trustedAuto: true` for convenience.
+  - Auto-execution of terminal steps depends on server settings (`WANIE_TERMINAL_ALLOWLIST` and user preferences). When the agent requests terminal execution it may set `trustedAuto: true` for convenience.
 
 - Coding capabilities
 
@@ -189,7 +189,7 @@ Invoke: <http base | none>
 
 Security / Admin
 
-- `OPENWA_TERMINAL_ALLOWLIST`: when set, only commands matching the allowlist are eligible for auto-execution.
+- `WANIE_TERMINAL_ALLOWLIST`: when set, only commands matching the allowlist are eligible for auto-execution.
 - `approvalMode`: `auto` vs `manual`. Manual-mode terminal requests require human approval via the dashboard/UI.
 - `invokeEnabled`: per-tool flag that controls if non-owner users may call a registered tool. By default, only the registering user (`addedBy`) may invoke the tool unless an admin enables `invokeEnabled`.
 - Registration and review: use the dashboard or admin endpoints to register external tools, review their `docs`, and verify required auth (API keys) before allowing invocation.
@@ -213,7 +213,7 @@ curl -X POST 'http://localhost:3000/api/agent/register-tool-url' \
   }'
 ```
 
-Replace `http://localhost:3000` with your OpenWA server host and port.
+Replace `http://localhost:3000` with your Wanie server host and port.
 
 - Invoke a registered tool (authenticated — user JWT or API key allowed):
 
@@ -229,7 +229,7 @@ curl -X POST 'http://localhost:3000/api/agent/invoke-tool/<tool_id>' \
   }'
 ```
 
-Using API key (header `X-API-Key` or `X-OpenWA-API-Key`):
+Using API key (header `X-API-Key` or `X-Wanie-API-Key`):
 
 ```bash
 curl -X POST 'http://localhost:3000/api/agent/invoke-tool/<tool_id>' \

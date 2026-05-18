@@ -75,7 +75,7 @@ async function updateAssistant(userId, { displayName, avatarUrl, persona }) {
       data: {
         userId,
         externalId: "openwa:assistant",
-        displayName: displayName || "OpenWA Assistant",
+        displayName: displayName || "Wanie Assistant",
         avatarUrl: avatarUrl || null,
         persona: persona || null,
       },

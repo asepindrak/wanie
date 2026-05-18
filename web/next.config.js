@@ -5,6 +5,7 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   env: {
+    NEXT_PUBLIC_WANIE_VERSION: packageJson.version,
     NEXT_PUBLIC_OPENWA_VERSION: packageJson.version,
   },
   images: {

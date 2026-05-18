@@ -289,7 +289,7 @@ function createApp({ config, sessionManager }) {
     res.header("Access-Control-Allow-Origin", "*");
     res.header(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-API-Key, X-OpenWA-API-Key, X-Client-Platform",
+      "Content-Type, Authorization, X-API-Key, X-Wanie-API-Key, X-OpenWA-API-Key, X-Client-Platform",
     );
     res.header(
       "Access-Control-Allow-Methods",
@@ -530,7 +530,7 @@ function createApp({ config, sessionManager }) {
       }
 
       if (secret !== config.jwtSecret) {
-        return res.status(401).json({ error: "Invalid OpenWA secret." });
+        return res.status(401).json({ error: "Invalid Wanie secret." });
       }
 
       const normalizedEmail = String(email || "")
@@ -562,7 +562,7 @@ function createApp({ config, sessionManager }) {
       }
 
       if (secret !== config.jwtSecret) {
-        return res.status(401).json({ error: "Invalid OpenWA secret." });
+        return res.status(401).json({ error: "Invalid Wanie secret." });
       }
 
       const result = await resetPassword({ email, password });
@@ -725,7 +725,7 @@ function createApp({ config, sessionManager }) {
         return res.status(400).json({ error: "prompt is required" });
       }
 
-      const instruction = `You generate OpenWA outgoing webhook configuration for an external application.
+      const instruction = `You generate Wanie outgoing webhook configuration for an external application.
 
 Return strict JSON only, no markdown, with this shape:
 {
@@ -742,7 +742,7 @@ Return strict JSON only, no markdown, with this shape:
 Rules:
 - Infer the URL, HTTP method, auth headers, and request body from the user's example.
 - Keep secret values as placeholders when the user does not provide exact values.
-- Use OpenWA placeholders in bodyTemplate: {{payload}}, {{chat.id}}, {{chat.title}}, {{chat.transportType}}, {{chat.contact.externalId}}, {{message.id}}, {{message.body}}, {{message.type}}, {{message.mediaFile.url}}.
+- Use Wanie placeholders in bodyTemplate: {{payload}}, {{chat.id}}, {{chat.title}}, {{chat.transportType}}, {{chat.contact.externalId}}, {{message.id}}, {{message.body}}, {{message.type}}, {{message.mediaFile.url}}.
 - bodyTemplate must be a string. It may contain JSON with placeholders.
 - Prefer JSON body unless the external example clearly requires another format.`;
 
