@@ -1,7 +1,6 @@
 const { prisma } = require("../database/client");
 const chatService = require("./chat-service");
 const TelegramService = require("./telegram-service");
-const WhatsAppMetaService = require("./whatsapp-meta-service");
 
 const DEFAULT_MAX_ATTEMPTS = Math.max(
   1,
@@ -22,6 +21,10 @@ const activeJobs = new Set();
 let workerTimer = null;
 let workerContext = null;
 let cleanupTimer = null;
+
+function getWhatsAppMetaService() {
+  return require("./whatsapp-meta-service");
+}
 
 function userRoom(userId) {
   return `user:${userId}`;
@@ -164,6 +167,7 @@ async function deliverMessage({ message, sessionManager }) {
   }
 
   if (transport === "whatsapp_cloud") {
+    const WhatsAppMetaService = getWhatsAppMetaService();
     return WhatsAppMetaService.sendMessage(message);
   }
 
