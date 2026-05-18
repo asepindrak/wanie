@@ -23,6 +23,7 @@ function createOpenApiDocument(config) {
     tags: [
       { name: "Runtime" },
       { name: "Webhooks" },
+      { name: "WhatsApp Official API" },
       { name: "Auth" },
       { name: "Workspace" },
       { name: "Sessions" },
@@ -55,8 +56,24 @@ function createOpenApiDocument(config) {
         WebhookConfig: {
           type: "object",
           properties: {
+            enabled: { type: "boolean" },
             url: { type: "string", format: "uri" },
             apiKey: { type: "string" },
+            method: {
+              type: "string",
+              enum: ["POST", "PUT", "PATCH"],
+            },
+            headers: {
+              type: "object",
+              additionalProperties: { type: "string" },
+              description:
+                "Optional custom headers for the outbound webhook request.",
+            },
+            bodyTemplate: {
+              type: "string",
+              description:
+                "Optional JSON body template. Leave empty to send the default OpenWA payload.",
+            },
           },
         },
         WebhookPayload: {
@@ -101,7 +118,10 @@ function createOpenApiDocument(config) {
             name: { type: "string" },
             phoneNumber: { type: ["string", "null"] },
             status: { type: "string" },
-            transportType: { type: ["string", "null"] },
+            transportType: {
+              type: ["string", "null"],
+              enum: ["wwebjs", "mock", "whatsapp_cloud", null],
+            },
             qrCode: { type: ["string", "null"] },
             errorMessage: { type: ["string", "null"] },
             createdAt: { type: "string", format: "date-time" },
@@ -210,77 +230,6 @@ function createOpenApiDocument(config) {
           tags: ["Runtime"],
           summary: "Get API version",
           responses: {
-            "/api/webhook": {
-              get: {
-                tags: ["Webhooks"],
-                summary: "Get current webhook configuration",
-                description:
-                  "Return the configured webhook for the authenticated user. Agents should use API keys to authenticate.",
-                operationId: "getWebhook",
-                security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
-                responses: {
-                  200: {
-                    description: "Webhook configuration",
-                    content: {
-                      "application/json": {
-                        schema: {
-                          $ref: "#/components/schemas/WebhookResponse",
-                        },
-                      },
-                    },
-                  },
-                },
-                "x-ai-agent-ready": true,
-              },
-              post: {
-                tags: ["Webhooks"],
-                summary: "Set or update webhook configuration",
-                description:
-                  "Configure an endpoint to receive incoming messages. The runtime will POST a JSON payload and include header `x-openwa-webhook-key` with the apiKey value.",
-                operationId: "setWebhook",
-                security: [{ bearerAuth: [] }],
-                requestBody: {
-                  required: true,
-                  content: {
-                    "application/json": {
-                      schema: { $ref: "#/components/schemas/WebhookConfig" },
-                      examples: {
-                        webhook: {
-                          summary: "Webhook example",
-                          value: {
-                            url: "https://example.com/openwa-webhook",
-                            apiKey: "S3CR3T",
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-                responses: {
-                  200: {
-                    description: "Saved webhook",
-                    content: {
-                      "application/json": {
-                        schema: {
-                          $ref: "#/components/schemas/WebhookResponse",
-                        },
-                      },
-                    },
-                  },
-                },
-                "x-ai-agent-ready": true,
-              },
-              delete: {
-                tags: ["Webhooks"],
-                summary: "Remove webhook configuration",
-                operationId: "deleteWebhook",
-                security: [{ bearerAuth: [] }],
-                responses: {
-                  200: { description: "Deleted" },
-                },
-                "x-ai-agent-ready": true,
-              },
-            },
             200: {
               description: "Package version",
               content: {
@@ -297,6 +246,163 @@ function createOpenApiDocument(config) {
               },
             },
           },
+        },
+      },
+      "/api/whatsapp/meta/webhook": {
+        get: {
+          tags: ["WhatsApp Official API"],
+          summary: "Verify Meta WhatsApp webhook",
+          description:
+            "Webhook verification endpoint for Meta Cloud API. Configure this URL in Meta Developer settings as the WhatsApp webhook callback.",
+          parameters: [
+            {
+              name: "hub.mode",
+              in: "query",
+              schema: { type: "string" },
+            },
+            {
+              name: "hub.verify_token",
+              in: "query",
+              schema: { type: "string" },
+            },
+            {
+              name: "hub.challenge",
+              in: "query",
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            200: {
+              description: "Verification challenge returned as plain text",
+              content: { "text/plain": { schema: { type: "string" } } },
+            },
+            403: { description: "Verify token did not match a configured device" },
+          },
+        },
+        post: {
+          tags: ["WhatsApp Official API"],
+          summary: "Receive Meta WhatsApp webhook events",
+          description:
+            "Receives WhatsApp Cloud API message and status events from Meta. Incoming messages are stored as OpenWA chats/messages and can trigger CRM automation and outbound webhooks.",
+          parameters: [
+            {
+              name: "x-hub-signature-256",
+              in: "header",
+              required: false,
+              schema: { type: "string" },
+              description:
+                "Meta request signature. Verified when the device has an app secret configured.",
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: true,
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "Webhook accepted",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: { ok: { type: "boolean" } },
+                    required: ["ok"],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      "/api/webhook": {
+        get: {
+          tags: ["Webhooks"],
+          summary: "Get current webhook configuration",
+          description:
+            "Return the configured outgoing webhook for the authenticated user. Agents should use API keys to authenticate.",
+          operationId: "getWebhook",
+          security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+          responses: {
+            200: {
+              description: "Webhook configuration",
+              content: {
+                "application/json": {
+                  schema: {
+                    $ref: "#/components/schemas/WebhookResponse",
+                  },
+                },
+              },
+            },
+          },
+          "x-ai-agent-ready": true,
+        },
+        post: {
+          tags: ["Webhooks"],
+          summary: "Set or update webhook configuration",
+          description:
+            "Configure an endpoint to receive incoming messages. By default the runtime sends JSON with `x-openwa-webhook-key`; advanced settings can customize method, headers, and body template.",
+          operationId: "setWebhook",
+          security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/WebhookConfig" },
+                examples: {
+                  defaultWebhook: {
+                    summary: "Default webhook",
+                    value: {
+                      enabled: true,
+                      url: "https://example.com/openwa-webhook",
+                      apiKey: "S3CR3T",
+                    },
+                  },
+                  customHeaders: {
+                    summary: "Webhook with custom headers",
+                    value: {
+                      enabled: true,
+                      url: "https://example.com/openwa-webhook",
+                      method: "POST",
+                      headers: {
+                        Authorization: "Bearer external-app-token",
+                        "x-api-key": "external-api-key",
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "Saved webhook",
+              content: {
+                "application/json": {
+                  schema: {
+                    $ref: "#/components/schemas/WebhookResponse",
+                  },
+                },
+              },
+            },
+          },
+          "x-ai-agent-ready": true,
+        },
+        delete: {
+          tags: ["Webhooks"],
+          summary: "Remove webhook configuration",
+          operationId: "deleteWebhook",
+          security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+          responses: {
+            200: { description: "Deleted" },
+          },
+          "x-ai-agent-ready": true,
         },
       },
       "/docs/json": {
@@ -566,6 +672,8 @@ function createOpenApiDocument(config) {
         post: {
           tags: ["Sessions"],
           summary: "Create a WhatsApp session",
+          description:
+            "Create a WhatsApp Web QR session by default, or create a WhatsApp Official API / Meta Cloud API session by setting `transportType` to `whatsapp_cloud` and providing Meta credentials.",
           security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
           requestBody: {
             required: true,
@@ -576,8 +684,60 @@ function createOpenApiDocument(config) {
                   properties: {
                     name: { type: "string" },
                     phoneNumber: { type: "string" },
+                    transportType: {
+                      type: "string",
+                      enum: ["wwebjs", "whatsapp_cloud", "mock"],
+                      default: "wwebjs",
+                    },
+                    metaPhoneNumberId: {
+                      type: "string",
+                      description:
+                        "Required when `transportType` is `whatsapp_cloud`.",
+                    },
+                    metaBusinessAccountId: {
+                      type: "string",
+                      description:
+                        "Optional WhatsApp Business Account ID for reference.",
+                    },
+                    metaAccessToken: {
+                      type: "string",
+                      description:
+                        "Required when `transportType` is `whatsapp_cloud`. Stored encrypted.",
+                    },
+                    metaVerifyToken: {
+                      type: "string",
+                      description:
+                        "Required when `transportType` is `whatsapp_cloud`. Must match Meta webhook verification.",
+                    },
+                    metaAppSecret: {
+                      type: "string",
+                      description:
+                        "Optional Meta app secret used to verify signed webhook payloads. Stored encrypted.",
+                    },
                   },
                   required: ["name"],
+                },
+                examples: {
+                  whatsappWebQr: {
+                    summary: "WhatsApp Web QR session",
+                    value: {
+                      name: "Customer Support WhatsApp",
+                      transportType: "wwebjs",
+                    },
+                  },
+                  whatsappOfficialApi: {
+                    summary: "WhatsApp Official API session",
+                    value: {
+                      name: "Official Support Line",
+                      transportType: "whatsapp_cloud",
+                      phoneNumber: "+6281234567890",
+                      metaPhoneNumberId: "123456789012345",
+                      metaBusinessAccountId: "987654321098765",
+                      metaAccessToken: "EAAB...",
+                      metaVerifyToken: "openwa-meta-verify-token",
+                      metaAppSecret: "meta-app-secret",
+                    },
+                  },
                 },
               },
             },
@@ -744,7 +904,7 @@ function createOpenApiDocument(config) {
           tags: ["Messages"],
           summary: "Send a message over HTTP",
           description:
-            "Preferred for AI agents and external clients that do not use Socket.IO. Supports text messages directly and media messages via an uploaded `mediaFileId`.",
+            "Preferred for AI agents and external clients that do not use Socket.IO. OpenWA resolves the chat transport automatically, including WhatsApp Web, WhatsApp Official API, and Telegram chats. Supports text messages directly and media messages via an uploaded `mediaFileId`.",
           security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
           parameters: [
             {
@@ -801,7 +961,7 @@ function createOpenApiDocument(config) {
           tags: ["Messages"],
           summary: "Send a message directly to a WhatsApp number or chat",
           description:
-            "Send a WhatsApp message using either an existing chatId or a direct phoneNumber. If the chat does not exist yet, the runtime will open a chat for the given WhatsApp number.",
+            "Send a WhatsApp message using either an existing chatId or a direct phoneNumber. The session transport can be WhatsApp Web or WhatsApp Official API. If the chat does not exist yet, the runtime will open a chat for the given WhatsApp number.",
           security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
           requestBody: {
             required: true,
@@ -871,7 +1031,7 @@ function createOpenApiDocument(config) {
           tags: ["Messages"],
           summary: "List outbound delivery jobs",
           description:
-            "List recent WhatsApp and Telegram delivery jobs. Failed jobs stopped after capped retry and can be retried manually.",
+            "List recent WhatsApp Web, WhatsApp Official API, and Telegram delivery jobs. Failed jobs stopped after capped retry and can be retried manually.",
           security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
           parameters: [
             {
@@ -903,7 +1063,7 @@ function createOpenApiDocument(config) {
           tags: ["Messages"],
           summary: "Retry an outbound delivery job",
           description:
-            "Reset attempts and retry a failed or queued outbound WhatsApp or Telegram delivery.",
+            "Reset attempts and retry a failed or queued outbound WhatsApp Web, WhatsApp Official API, or Telegram delivery.",
           security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
           parameters: [
             {
@@ -923,7 +1083,7 @@ function createOpenApiDocument(config) {
           tags: ["Messages"],
           summary: "Cancel an outbound delivery job",
           description:
-            "Stop retrying a queued or sending outbound WhatsApp or Telegram delivery job.",
+            "Stop retrying a queued or sending outbound WhatsApp Web, WhatsApp Official API, or Telegram delivery job.",
           security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
           parameters: [
             {
@@ -1117,7 +1277,7 @@ ${keyBlock}
   - \`GET /docs/json\`
 3. List and manage WhatsApp sessions:
   - \`GET /api/sessions\`
-  - \`POST /api/sessions\`
+  - \`POST /api/sessions\` — create either a WhatsApp Web QR session or a WhatsApp Official API / Meta Cloud API session
   - \`POST /api/sessions/:sessionId/connect\`
   - \`POST /api/sessions/:sessionId/disconnect\`
 4. Read chats and contacts:
@@ -1136,9 +1296,29 @@ ${keyBlock}
   - \`POST /api/outbound-deliveries/:deliveryId/retry\` — reset and retry a failed outbound delivery
   - \`POST /api/outbound-deliveries/:deliveryId/cancel\` — stop retrying a queued outbound delivery
 
-> \`sessionId\` is required when sending a new WhatsApp message by \`phoneNumber\`. Replies to an existing chat can use \`/api/chats/:chatId/messages/send\`; OpenWA uses the chat transport, including Telegram chats whose receiver starts with \`tg:\`.
+> \`sessionId\` is required when sending a new WhatsApp message by \`phoneNumber\`. Replies to an existing chat can use \`/api/chats/:chatId/messages/send\`; OpenWA uses the chat transport, including WhatsApp Web chats, WhatsApp Official API chats, and Telegram chats whose receiver starts with \`tg:\`.
 
-Outbound sends are queued durably and retried with backoff when WhatsApp or Telegram delivery fails. OpenWA stops after 5 attempts by default and marks the delivery job as \`failed\`; use the retry endpoint to try again manually.
+Outbound sends are queued durably and retried with backoff when WhatsApp Web, WhatsApp Official API, or Telegram delivery fails. OpenWA stops after 5 attempts by default and marks the delivery job as \`failed\`; use the retry endpoint to try again manually.
+
+## WhatsApp Official API / Meta Cloud API
+
+OpenWA can receive and send WhatsApp messages through either WhatsApp Web QR sessions or WhatsApp Official API / Meta Cloud API sessions.
+
+To add an official API device from the dashboard:
+
+1. Open **Settings -> Devices**.
+2. Choose **WhatsApp Official API**.
+3. Enter the Meta Phone Number ID, access token, and webhook verify token.
+4. Optionally enter the WhatsApp Business Account ID and App Secret.
+5. Configure the Meta webhook callback URL as:
+
+\`\`\`
+${config.frontendUrl}/api/whatsapp/meta/webhook
+\`\`\`
+
+Official API chats use the same OpenWA chat IDs, message APIs, CRM automation, incoming webhooks, media upload flow, and outbound delivery queue as WhatsApp Web chats. Incoming text, media, location, button, and interactive messages are stored as normal OpenWA messages.
+
+Free-form outbound replies are intended for Meta's customer service window. Template-message sending for conversations outside that window is not implemented yet.
 
 ### Example payloads
 
@@ -1190,7 +1370,7 @@ Content-Type: application/json
 x-openwa-webhook-key: <apiKey configured in OpenWA>
 \`\`\`
 
-When an incoming WhatsApp or non-admin Telegram customer message arrives the runtime will \`POST\` a JSON payload to your configured URL with header \`x-openwa-webhook-key\` set to the \`apiKey\` you provided. The payload contains \`chat\` and \`message\` objects described in the OpenAPI schemas. Store \`chat.id\` and reply through \`POST /api/chats/:chatId/messages/send\`.
+When an incoming WhatsApp Web, WhatsApp Official API, or non-admin Telegram customer message arrives the runtime will \`POST\` a JSON payload to your configured URL with header \`x-openwa-webhook-key\` set to the \`apiKey\` you provided. The payload contains \`chat\` and \`message\` objects described in the OpenAPI schemas. Store \`chat.id\` and reply through \`POST /api/chats/:chatId/messages/send\`.
 
 Webhook deliveries are logged per user. OpenWA retries transient delivery failures automatically, and failed deliveries can be replayed with the retry endpoint.
 
@@ -1203,14 +1383,14 @@ Example payload:
     "title": "Customer Name",
     "sessionId": "whatsapp_session_id_or_null_for_telegram",
     "contact": {
-      "externalId": "6281234567890@c.us or tg:123456789"
+      "externalId": "6281234567890@c.us, wa:6281234567890, or tg:123456789"
     }
   },
   "message": {
     "id": "message_id_from_openwa",
     "chatId": "chat_id_from_openwa",
     "sessionId": "whatsapp_session_id_or_null_for_telegram",
-    "sender": "6281234567890@c.us or tg:123456789",
+    "sender": "6281234567890@c.us, wa:6281234567890, or tg:123456789",
     "receiver": "your_whatsapp_or_telegram_target",
     "body": "Customer message text",
     "type": "text",
@@ -1240,7 +1420,7 @@ app.post("/openwa-webhook", express.json(), async (req, res) => {
 });
 \`\`\`
 
-Reply to the same WhatsApp or Telegram chat:
+Reply to the same WhatsApp Web, WhatsApp Official API, or Telegram chat:
 
 \`\`\`bash
 curl -X POST ${config.frontendUrl}/api/chats/<chatId>/messages/send \\

@@ -21,6 +21,7 @@ If you use OpenWA with WhatsApp, make sure your usage complies with the terms, p
 - Dashboard authentication for register, login, and workspace access.
 - Workspace bootstrap endpoint for loading the current user, sessions, chats, active chat, and initial messages.
 - Multi-session WhatsApp management with session creation, connect, disconnect, and QR pairing.
+- WhatsApp Official API / Meta Cloud API device support for teams that prefer the official Meta transport instead of WhatsApp Web QR sessions.
 - Contact and chat browsing with search and chat opening from contacts.
 - Message APIs for listing, searching, sending, forwarding, and deleting messages.
 - Multipart media upload flow with `mediaFileId` support for outbound media messages.
@@ -55,6 +56,23 @@ If you use OpenWA with WhatsApp, make sure your usage complies with the terms, p
 - Monitor the bot status via the assistant tool `get_telegram_bot_status`.
 - Use the same bot as a CRM customer channel: Telegram chat IDs not listed in the admin allowlist are treated as customer conversations and never receive remote assistant tool access.
 - Customer Telegram messages are stored as CRM chats and can receive AI draft or auto-reply responses grounded in the CRM knowledge base.
+
+## WhatsApp Official API / Meta Cloud API
+
+OpenWA can run WhatsApp devices through either WhatsApp Web QR pairing or the WhatsApp Official API / Meta Cloud API. Official API devices use the same dashboard inbox, CRM automation, outbound delivery queue, media storage, webhooks, and API endpoints as WhatsApp Web devices.
+
+To add an official API device:
+
+1. Open **Settings → Devices**.
+2. Choose **WhatsApp Official API**.
+3. Enter the Meta Phone Number ID, access token, and webhook verify token.
+4. Optionally enter the WhatsApp Business Account ID and App Secret.
+5. In Meta Developer settings, set the callback URL to `https://<your-openwa-host>/api/whatsapp/meta/webhook`.
+6. Subscribe the app to WhatsApp message and status webhook events.
+
+OpenWA stores the access token and app secret encrypted in runtime storage. Incoming text, media, location, button, and interactive WhatsApp messages are converted into normal OpenWA chats. Outbound text and uploaded media can be sent through the same dashboard composer and API routes.
+
+Meta's WhatsApp messaging policies still apply. Free-form outbound replies are intended for the customer service window; template-message sending for conversations outside that window is not implemented yet.
 
 ## CRM AI Workspace
 
@@ -223,6 +241,7 @@ WHATSAPP_HEALTH_INTERVAL_MS=30000
 WHATSAPP_HEALTH_TIMEOUT_MS=10000
 WHATSAPP_RECONNECT_BASE_DELAY_MS=5000
 WHATSAPP_RECONNECT_MAX_DELAY_MS=120000
+WHATSAPP_META_GRAPH_VERSION=v23.0
 DATABASE_URL=file:./storage/database/openwa.db
 ```
 
@@ -245,6 +264,7 @@ If `OPENWA_JWT_SECRET` is not set, the first `openwa` run will prompt you to ent
 - `WHATSAPP_HEALTH_INTERVAL_MS` controls active WhatsApp device health checks.
 - `WHATSAPP_HEALTH_TIMEOUT_MS` controls how long a WhatsApp health probe may hang before reconnect.
 - `WHATSAPP_RECONNECT_BASE_DELAY_MS` and `WHATSAPP_RECONNECT_MAX_DELAY_MS` control reconnect backoff.
+- `WHATSAPP_META_GRAPH_VERSION` controls the Meta Graph API version used for WhatsApp Official API devices.
 - Terminal commands are only auto-executed if `approvalMode` is `auto` and the command matches an allowlist entry or user settings allow it.
 
 ## Typical usage flow
@@ -253,8 +273,8 @@ If `OPENWA_JWT_SECRET` is not set, the first `openwa` run will prompt you to ent
 2. Open the dashboard at `http://localhost:55111` or your deployment host.
 3. Register the first user or log in.
 4. Create a new WhatsApp session from the dashboard.
-5. Connect the session to generate a QR code.
-6. Pair the device and wait for the workspace to sync chats and contacts.
+5. Choose **WhatsApp Web QR** and pair the QR code, or choose **WhatsApp Official API** and enter the Meta Cloud API credentials.
+6. Wait for the workspace to sync chats and contacts or receive new webhook messages.
 7. Send text or media from the dashboard or the HTTP API.
 8. Create an API key from **Settings → API Access** for agents or external integrations.
 9. Optional: open **CRM**, upload knowledge documents, test knowledge answers, then enable draft or auto-send mode.
@@ -653,6 +673,8 @@ curl -X POST http://localhost:55111/api/chats/<chatId>/messages/send \
 
 Use this same endpoint to reply to a Telegram customer chat received from a webhook.
 
+For WhatsApp Official API chats, use the same endpoint. OpenWA resolves the chat transport and sends through Meta Cloud API automatically.
+
 For media replies, either upload first with `/api/media` and pass `mediaFileId`, or pass a public `mediaUrl` with type `image`, `video`, `audio`, `document`, or `sticker`.
 
 Send a direct message by phone number:
@@ -728,6 +750,7 @@ curl -X POST http://localhost:55111/api/agent/invoke-tool/weather-api \
 - `server/services/crm-auto-reply-service.js` - Generates CRM drafts, runs guarded auto-replies, and delivers CRM messages to WhatsApp or Telegram.
 - `server/services/crm-service.js` - Stores CRM automation settings, per-chat/session overrides, and automation logs.
 - `server/services/knowledge-service.js` - Extracts, chunks, indexes, searches, and reindexes CRM knowledge documents.
+- `server/services/whatsapp-meta-service.js` - Handles WhatsApp Official API / Meta Cloud API config, webhook verification, inbound messages, media download, and outbound sends.
 - `server/services/tool-executor.js` - Executes assistant tools and external integrations.
 - `server/services/llm-service.js` - LLM provider abstraction and model selection.
 - `server/services/assistant-service.js` - Manages assistant profiles and configurations.

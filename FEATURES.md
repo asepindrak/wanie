@@ -22,6 +22,10 @@ This document lists all features available in OpenWA, extracted from the API spe
 
 - Create new WhatsApp session
 - Connect/pair session with WhatsApp via QR code
+- Add WhatsApp Official API / Meta Cloud API sessions without QR pairing
+- Store Meta access token and app secret encrypted in runtime storage
+- Verify Meta webhook callbacks with a per-device verify token
+- Validate signed Meta webhook payloads when an app secret is configured
 - Disconnect/logout session
 - List all sessions
 - Session status tracking (pending, connected, disconnected, error)
@@ -54,12 +58,14 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Search messages within chat
 - Send text messages
 - Send media messages (images, videos, documents, audio)
+- Send text and media through WhatsApp Official API / Meta Cloud API sessions
 - Reply to specific messages
 - Forward messages to other chats
 - Delete sent messages
 - Message direction tracking (inbound/outbound)
 - Message type support (text, image, video, document, audio, etc.)
 - Message delivery status (sent, delivered, read)
+- WhatsApp Official API status webhook mapping for sent, delivered, and read receipts
 - Durable outbound delivery queue with capped retry, cancel, cleanup, and manual retry for failed sends
 - Active WhatsApp device health checks with automatic reconnect and backoff
 - Message timestamps
@@ -118,6 +124,18 @@ This document lists all features available in OpenWA, extracted from the API spe
 - Admin Telegram chat IDs remain reserved for remote OpenWA assistant control
 - Admin Telegram chat ID allowlist can be managed from Settings
 - Non-admin Telegram chat IDs are treated as customer conversations and cannot use the remote assistant tools
+
+## WhatsApp Official API Channel
+
+- WhatsApp Official API / Meta Cloud API devices can be added from Settings
+- Meta webhook callback endpoint at `/api/whatsapp/meta/webhook`
+- Incoming official API messages are stored in the same chat/message database
+- Supported inbound message types include text, images, videos, documents, audio, locations, buttons, and interactive replies
+- Meta-hosted inbound media is downloaded into OpenWA media storage
+- Outbound dashboard, CRM, and API replies can be sent through Meta Cloud API
+- Official API chats can trigger CRM draft and auto-reply automation
+- Official API chats can trigger incoming-message webhooks for external apps
+- Official API transport uses the same durable outbound retry queue as WhatsApp Web and Telegram
 
 ## Media
 

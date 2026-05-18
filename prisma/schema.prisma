@@ -195,6 +195,7 @@ model Message {
   outboundDeliveryJob OutboundDeliveryJob?
 
   @@index([chatId, createdAt])
+  @@index([externalMessageId])
   @@map("messages")
 }
 
@@ -419,6 +420,7 @@ model KnowledgeDocument {
   chunks KnowledgeChunk[]
 
   @@index([userId, createdAt])
+  @@index([userId, originalName])
   @@map("knowledge_documents")
 }
 
