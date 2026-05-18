@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./logo-long.png" alt="Wanie" width="320" />
+</p>
+
 # Wanie
 
 **AI messaging CRM for WhatsApp, Telegram, and external apps.**
