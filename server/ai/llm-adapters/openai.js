@@ -69,6 +69,34 @@ async function postOpenAiJson(url, apiKey, body, maxAttempts = 2) {
   throw lastError || new Error("OpenAI request failed.");
 }
 
+async function postOpenAiMultipart(url, apiKey, form, maxAttempts = 2) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      lastError = new Error(`OpenAI request failed: ${res.status} ${text}`);
+      if (attempt < maxAttempts && res.status >= 500) {
+        await delay(250 * attempt);
+        continue;
+      }
+      throw lastError;
+    }
+
+    return res.json();
+  }
+
+  throw lastError || new Error("OpenAI request failed.");
+}
+
 // Minimal OpenAI adapter stub
 // Exports: listModels(config) and generate(config, params)
 module.exports = {
@@ -155,11 +183,60 @@ module.exports = {
 
     throw new Error("No messages or prompt provided to OpenAI adapter.");
   },
+  transcribe: async function (config = {}, params = {}) {
+    const fs = require("fs");
+    const path = require("path");
+    const apiKey = (config && config.apiKey) || process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        "OpenAI API key missing. Provide config.apiKey or set OPENAI_API_KEY.",
+      );
+    }
+
+    if (typeof fetch !== "function" || typeof FormData !== "function") {
+      throw new Error("fetch/FormData is not available in this Node runtime.");
+    }
+
+    const filePath = params.filePath;
+    if (!filePath || !fs.existsSync(filePath)) {
+      throw new Error("Audio file not found.");
+    }
+
+    const host =
+      (config && (config.host || process.env.OPENAI_HOST)) ||
+      "https://api.openai.com";
+    const base = String(host).replace(/\/$/, "");
+    const model =
+      params.model ||
+      (config && config.transcriptionModel) ||
+      "gpt-4o-mini-transcribe";
+    const buffer = fs.readFileSync(filePath);
+    const form = new FormData();
+    form.append("model", model);
+    form.append(
+      "file",
+      new Blob([buffer], {
+        type: params.mimeType || "audio/ogg",
+      }),
+      params.fileName || path.basename(filePath),
+    );
+    if (params.language) {
+      form.append("language", params.language);
+    }
+
+    const data = await postOpenAiMultipart(
+      `${base}/v1/audio/transcriptions`,
+      apiKey,
+      form,
+    );
+    return { text: String(data?.text || "").trim(), raw: data, model };
+  },
   __internal: {
     delay,
     extractOpenAiText,
     hasChoices,
     isRetriableOpenAiFailure,
     postOpenAiJson,
+    postOpenAiMultipart,
   },
 };

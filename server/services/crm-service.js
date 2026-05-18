@@ -7,6 +7,8 @@ const defaultSettings = {
   defaultMode: "draft",
   embeddingProviderId: null,
   embeddingModel: null,
+  transcriptionProviderId: null,
+  transcriptionModel: "gpt-4o-mini-transcribe",
   similarityThreshold: 0.72,
   maxChunks: 6,
   cooldownSeconds: 180,
@@ -73,6 +75,8 @@ function serializeSettings(global, sessionRows, chatRows) {
         defaultMode: global.defaultMode,
         embeddingProviderId: global.embeddingProviderId,
         embeddingModel: global.embeddingModel,
+        transcriptionProviderId: global.transcriptionProviderId,
+        transcriptionModel: global.transcriptionModel,
         similarityThreshold: global.similarityThreshold,
         maxChunks: global.maxChunks,
         cooldownSeconds: global.cooldownSeconds,
@@ -128,6 +132,16 @@ async function updateSettings(userId, payload = {}) {
 
   if (payload.embeddingModel !== undefined) {
     data.embeddingModel = String(payload.embeddingModel || "").trim() || null;
+  }
+
+  if (payload.transcriptionProviderId !== undefined) {
+    data.transcriptionProviderId = payload.transcriptionProviderId || null;
+  }
+
+  if (payload.transcriptionModel !== undefined) {
+    data.transcriptionModel =
+      String(payload.transcriptionModel || "").trim() ||
+      defaultSettings.transcriptionModel;
   }
 
   if (payload.maxChunks !== undefined) {

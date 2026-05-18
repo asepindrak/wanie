@@ -1,8 +1,12 @@
+const fs = require("fs");
+const path = require("path");
 const chatService = require("./chat-service");
 const crmService = require("./crm-service");
 const knowledgeService = require("./knowledge-service");
 const llmService = require("./llm-service");
 const outboundDeliveryService = require("./outbound-delivery-service");
+const transcriptionService = require("./transcription-service");
+const { mediaDir } = require("../utils/paths");
 
 const generationRetryDelaysMs = [0, 1000, 2500];
 const autoReplyDebounceMs = 8000;
@@ -39,6 +43,133 @@ function isInbound(message) {
   return message?.direction === "inbound" || message?.direction === "incoming";
 }
 
+function isNoInboundTextError(error) {
+  return /No inbound customer message found/i.test(String(error?.message || ""));
+}
+
+function resolveMediaFilePath(mediaFile) {
+  const relativePath = String(mediaFile?.relativePath || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .trim();
+  if (!relativePath) return null;
+
+  const normalized = relativePath.startsWith("media/")
+    ? relativePath.slice("media/".length)
+    : relativePath;
+  return path.join(mediaDir, normalized);
+}
+
+function isImageMediaFile(mediaFile) {
+  return String(mediaFile?.mimeType || "")
+    .toLowerCase()
+    .startsWith("image/");
+}
+
+function truncateText(value, maxLength = 5000) {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}\n[truncated]`;
+}
+
+async function extractMediaText(userId, mediaFile, settings) {
+  if (!mediaFile || isImageMediaFile(mediaFile)) return "";
+
+  if (transcriptionService.isAudioMediaFile(mediaFile)) {
+    try {
+      const transcript = await transcriptionService.transcribeMediaFile(
+        userId,
+        mediaFile,
+        {
+          providerId: settings.transcriptionProviderId,
+          model: settings.transcriptionModel,
+          language: "id",
+        },
+      );
+      return transcript ? `Audio transcript:\n${transcript}` : "";
+    } catch (error) {
+      return `[Audio could not be transcribed: ${mediaFile.originalName || "audio"}; reason: ${error.message}]`;
+    }
+  }
+
+  const filePath = resolveMediaFilePath(mediaFile);
+  if (!filePath || !fs.existsSync(filePath)) {
+    return `[Attachment unavailable: ${mediaFile.originalName || "file"}]`;
+  }
+
+  try {
+    const text = await knowledgeService.extractText({
+      path: filePath,
+      filename: mediaFile.fileName || mediaFile.originalName || "attachment",
+      originalname: mediaFile.originalName || mediaFile.fileName || "attachment",
+      mimetype: mediaFile.mimeType || "application/octet-stream",
+    });
+    return truncateText(text, 6000);
+  } catch (error) {
+    return `[Attachment could not be extracted: ${mediaFile.originalName || "file"}; mimeType: ${mediaFile.mimeType || "unknown"}; reason: ${error.message}]`;
+  }
+}
+
+function buildImageBlock(mediaFile) {
+  const filePath = resolveMediaFilePath(mediaFile);
+  if (!filePath || !fs.existsSync(filePath)) return null;
+
+  const maxInlineBytes = 5 * 1024 * 1024;
+  if (mediaFile?.size && Number(mediaFile.size) > maxInlineBytes) {
+    return null;
+  }
+
+  const base64 = fs.readFileSync(filePath).toString("base64");
+  return {
+    type: "image_url",
+    image_url: {
+      url: `data:${mediaFile.mimeType || "image/png"};base64,${base64}`,
+    },
+  };
+}
+
+async function enrichMessagesForAutoReply(userId, messages, settings) {
+  const imageBlocks = [];
+  const enriched = [];
+
+  for (const message of messages) {
+    const mediaFile = message.mediaFile || null;
+    let crmContent = String(message.body || "").trim();
+
+    if (mediaFile) {
+      const attachmentName =
+        mediaFile.originalName || mediaFile.fileName || "file";
+      if (isImageMediaFile(mediaFile)) {
+        const imageBlock = buildImageBlock(mediaFile);
+        crmContent = [
+          crmContent,
+          imageBlock
+            ? `[Image attached: ${attachmentName}. Analyze the attached image directly.]`
+            : `[Image attached but too large or unavailable: ${attachmentName}]`,
+        ]
+          .filter(Boolean)
+          .join("\n");
+        if (imageBlock && imageBlocks.length < 3) {
+          imageBlocks.push(imageBlock);
+        }
+      } else {
+        const extractedText = await extractMediaText(userId, mediaFile, settings);
+        crmContent = [
+          crmContent,
+          `[Attachment: ${attachmentName}; mimeType: ${mediaFile.mimeType || "unknown"}]`,
+          extractedText ? `Extracted attachment text:\n${extractedText}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+      }
+    }
+
+    enriched.push({ ...message, crmContent });
+  }
+
+  return { messages: enriched, imageBlocks };
+}
+
 function buildPrompt({ chat, messages, snippets, settings }) {
   const channel =
     chat?.contact?.externalId &&
@@ -61,7 +192,7 @@ function buildPrompt({ chat, messages, snippets, settings }) {
     .slice(-8)
     .map((message) => {
       const role = message.direction === "outbound" ? "Agent" : "Customer";
-      return `${role}: ${message.body || "[attachment]"}`;
+      return `${role}: ${message.crmContent || message.body || "[attachment]"}`;
     })
     .join("\n");
 
@@ -174,7 +305,7 @@ async function createAndDeliverSystemNotice({
   return outgoing;
 }
 
-async function generateDraft(userId, chatId) {
+async function generateDraft(userId, chatId, { inboundMessage } = {}) {
   const chat = await chatService.getChatWithContact(userId, chatId);
   if (!chat) throw new Error("Chat not found.");
 
@@ -183,27 +314,62 @@ async function generateDraft(userId, chatId) {
     take: 12,
   });
   const messages = messageResult.messages || [];
-  const lastInbound = [...messages].reverse().find(isInbound);
+  const inboundMessageInHistory =
+    inboundMessage?.id &&
+    messages.some((message) => message.id === inboundMessage.id);
+  const contextMessages =
+    inboundMessage && !inboundMessageInHistory
+      ? [...messages, inboundMessage]
+      : messages;
+  const enrichedContext = await enrichMessagesForAutoReply(
+    userId,
+    contextMessages,
+    settings,
+  );
+  const contextMessagesForPrompt = enrichedContext.messages;
+  const lastInbound = [...contextMessagesForPrompt]
+    .reverse()
+    .find(
+      (message) =>
+        isInbound(message) &&
+        String(message.crmContent || message.body || "").trim(),
+    );
 
-  if (!lastInbound?.body) {
+  if (!String(lastInbound?.crmContent || lastInbound?.body || "").trim()) {
     throw new Error("No inbound customer message found for this chat.");
   }
 
   const knowledgeQuery =
-    messages
-      .filter((message) => isInbound(message) && message.body)
+    contextMessagesForPrompt
+      .filter(
+        (message) => isInbound(message) && (message.crmContent || message.body),
+      )
       .slice(-4)
-      .map((message) => message.body)
-      .join("\n") || lastInbound.body;
+      .map((message) => message.crmContent || message.body)
+      .join("\n") ||
+    lastInbound.crmContent ||
+    lastInbound.body;
 
   const snippets = await knowledgeService.searchChunks(userId, knowledgeQuery, {
     limit: settings.maxChunks,
   });
+  const prompt = buildPrompt({
+    chat,
+    messages: contextMessagesForPrompt,
+    snippets,
+    settings,
+  });
+  const userContent = enrichedContext.imageBlocks.length
+    ? [
+        { type: "text", text: prompt },
+        ...enrichedContext.imageBlocks,
+      ]
+    : prompt;
   const result = await llmService.generate(userId, {
     messages: [
       {
         role: "user",
-        content: buildPrompt({ chat, messages, snippets, settings }),
+        content: userContent,
       },
     ],
   });
@@ -214,8 +380,8 @@ async function generateDraft(userId, chatId) {
   };
 }
 
-async function generateDraftWithRetry(userId, chatId) {
-  return retryOperation(() => generateDraft(userId, chatId), {
+async function generateDraftWithRetry(userId, chatId, options = {}) {
+  return retryOperation(() => generateDraft(userId, chatId, options), {
     delaysMs: generationRetryDelaysMs,
     onRetry: (error, attempt) => {
       console.warn(
@@ -288,7 +454,9 @@ async function maybeAutoReply({
   const mode = await crmService.resolveModeForChat(userId, chat);
   if (mode === "draft") {
     try {
-      const result = await generateDraftWithRetry(userId, chat.id);
+      const result = await generateDraftWithRetry(userId, chat.id, {
+        inboundMessage,
+      });
       await crmService.createAutomationLog(userId, {
         chatId: chat.id,
         mode,
@@ -307,6 +475,17 @@ async function maybeAutoReply({
 
       return { ok: true, mode, draft: result.draft, sources: result.sources };
     } catch (error) {
+      if (isNoInboundTextError(error)) {
+        await crmService.createAutomationLog(userId, {
+          chatId: chat.id,
+          mode,
+          action: "skipped",
+          reason: "no-inbound-text",
+          inboundMessageId: inboundMessage?.id,
+        });
+        return { skipped: true, mode, reason: "no-inbound-text" };
+      }
+
       await crmService.createAutomationLog(userId, {
         chatId: chat.id,
         mode,
@@ -491,8 +670,19 @@ async function runAutoReply({
 
   let result;
   try {
-    result = await generateDraftWithRetry(userId, chat.id);
+    result = await generateDraftWithRetry(userId, chat.id, { inboundMessage });
   } catch (error) {
+    if (isNoInboundTextError(error)) {
+      await crmService.createAutomationLog(userId, {
+        chatId: chat.id,
+        mode,
+        action: "skipped",
+        reason: "no-inbound-text",
+        inboundMessageId: inboundMessage?.id,
+      });
+      return { skipped: true, mode, reason: "no-inbound-text" };
+    }
+
     const fallbackDraft = String(settings.fallbackMessage || "").trim();
     await crmService.createAutomationLog(userId, {
       chatId: chat.id,

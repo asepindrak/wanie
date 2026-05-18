@@ -34,6 +34,8 @@ const defaultCrmSettings = {
   defaultMode: "draft",
   embeddingProviderId: null,
   embeddingModel: "",
+  transcriptionProviderId: null,
+  transcriptionModel: "gpt-4o-mini-transcribe",
   similarityThreshold: 0.72,
   maxChunks: 6,
   cooldownSeconds: 180,
@@ -156,6 +158,8 @@ export default function CrmPage() {
   const [knowledgeDocs, setKnowledgeDocs] = useState([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [aiProviders, setAiProviders] = useState([]);
+  const [providerModels, setProviderModels] = useState({});
+  const [modelsLoadingProviderId, setModelsLoadingProviderId] = useState(null);
   const [reindexingDocId, setReindexingDocId] = useState(null);
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [knowledgeResults, setKnowledgeResults] = useState([]);
@@ -256,6 +260,27 @@ export default function CrmPage() {
       setError(requestError.message);
     }
   }, [token]);
+
+  const fetchProviderModels = useCallback(
+    async (providerId) => {
+      if (!token || !providerId) return;
+      setModelsLoadingProviderId(providerId);
+      try {
+        const data = await apiFetch(`/api/ai-providers/${providerId}/models`, {
+          token,
+        });
+        setProviderModels((current) => ({
+          ...current,
+          [providerId]: data.models || [],
+        }));
+      } catch (requestError) {
+        setError(requestError.message);
+      } finally {
+        setModelsLoadingProviderId(null);
+      }
+    },
+    [token],
+  );
 
   const loadAutomationLogs = useCallback(
     async (chatId = null) => {
@@ -1388,6 +1413,99 @@ export default function CrmPage() {
                       })
                     }
                   />
+                  <div className="mt-4 rounded-[18px] bg-[#111b21] p-3">
+                    <h4 className="text-xs font-semibold text-white/70">
+                      Audio transcription
+                    </h4>
+                    <label className="mt-3 block text-xs text-white/45">
+                      Transcription provider
+                    </label>
+                    <select
+                      className="mt-2 w-full rounded-2xl bg-[#0d171d] px-3 py-2 text-sm text-white outline-none"
+                      value={settings.transcriptionProviderId || ""}
+                      onChange={(event) => {
+                        const providerId = event.target.value || null;
+                        saveCrmSettingsPatch({
+                          transcriptionProviderId: providerId,
+                        });
+                        if (providerId && !providerModels[providerId]) {
+                          fetchProviderModels(providerId);
+                        }
+                      }}
+                    >
+                      <option value="">Use default AI provider</option>
+                      {aiProviders.map((provider) => (
+                        <option key={provider.id} value={provider.id}>
+                          {provider.name} ({provider.provider})
+                        </option>
+                      ))}
+                    </select>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <label className="block text-xs text-white/45">
+                        Transcription model
+                      </label>
+                      {settings.transcriptionProviderId ? (
+                        <button
+                          type="button"
+                          className="rounded-full bg-white/5 px-2 py-1 text-[10px] text-white/55"
+                          onClick={() =>
+                            fetchProviderModels(settings.transcriptionProviderId)
+                          }
+                          disabled={
+                            modelsLoadingProviderId ===
+                            settings.transcriptionProviderId
+                          }
+                        >
+                          {modelsLoadingProviderId ===
+                          settings.transcriptionProviderId
+                            ? "Loading"
+                            : "Fetch models"}
+                        </button>
+                      ) : null}
+                    </div>
+                    {settings.transcriptionProviderId &&
+                    providerModels[settings.transcriptionProviderId]?.length ? (
+                      <select
+                        className="mt-2 w-full rounded-2xl bg-[#0d171d] px-3 py-2 text-sm text-white outline-none"
+                        value={settings.transcriptionModel || ""}
+                        onChange={(event) =>
+                          saveCrmSettingsPatch({
+                            transcriptionModel: event.target.value,
+                          })
+                        }
+                      >
+                        <option value="">gpt-4o-mini-transcribe</option>
+                        {providerModels[settings.transcriptionProviderId].map(
+                          (model) => (
+                            <option key={model.id} value={model.id}>
+                              {model.name || model.id}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    ) : (
+                      <input
+                        className="mt-2 w-full rounded-2xl bg-[#0d171d] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30"
+                        placeholder="gpt-4o-mini-transcribe"
+                        value={settings.transcriptionModel || ""}
+                        onChange={(event) =>
+                          setSettings((current) => ({
+                            ...current,
+                            transcriptionModel: event.target.value,
+                          }))
+                        }
+                        onBlur={(event) =>
+                          saveCrmSettingsPatch({
+                            transcriptionModel: event.target.value,
+                          })
+                        }
+                      />
+                    )}
+                    <p className="mt-2 text-xs leading-5 text-white/35">
+                      Voice notes and audio files are transcribed before CRM
+                      auto-reply generates a draft.
+                    </p>
+                  </div>
                   <label className="mt-3 block text-xs text-white/45">
                     Similarity threshold
                   </label>

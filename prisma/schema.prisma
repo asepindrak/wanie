@@ -151,16 +151,20 @@ model Chat {
 }
 
 model MediaFile {
-  id           String    @id @default(cuid())
-  userId       String
-  fileName     String
-  originalName String
-  mimeType     String
-  size         Int
-  relativePath String
-  createdAt    DateTime  @default(now())
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages     Message[]
+  id                    String    @id @default(cuid())
+  userId                String
+  fileName              String
+  originalName          String
+  mimeType              String
+  size                  Int
+  relativePath          String
+  transcriptionText     String?
+  transcriptionProvider String?
+  transcriptionModel    String?
+  transcribedAt         DateTime?
+  createdAt             DateTime  @default(now())
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages              Message[]
 
   @@index([userId])
   @@map("media_files")
@@ -291,6 +295,8 @@ model CrmAiSetting {
   defaultMode                 String   @default("draft")
   embeddingProviderId         String?
   embeddingModel              String?
+  transcriptionProviderId     String?
+  transcriptionModel          String?
   similarityThreshold         Float    @default(0.72)
   maxChunks                   Int      @default(6)
   cooldownSeconds             Int      @default(180)
