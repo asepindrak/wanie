@@ -59,6 +59,10 @@ export default function DashboardPage() {
   const [apiKeySecret, setApiKeySecret] = useState("");
   const [revokingKeyId, setRevokingKeyId] = useState(null);
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookEnabled, setWebhookEnabled] = useState(true);
+  const [webhookMethod, setWebhookMethod] = useState("POST");
+  const [webhookHeaders, setWebhookHeaders] = useState("");
+  const [webhookBodyTemplate, setWebhookBodyTemplate] = useState("");
   const [webhookApiKey, setWebhookApiKey] = useState("");
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [startingContactId, setStartingContactId] = useState(null);
@@ -199,6 +203,14 @@ export default function DashboardPage() {
           const data = await apiFetch("/api/webhook", { token });
           const cfg = data.webhook || {};
           setWebhookUrl(cfg.url || "");
+          setWebhookEnabled(cfg.enabled !== false);
+          setWebhookMethod(cfg.method || "POST");
+          setWebhookHeaders(
+            cfg.headers && Object.keys(cfg.headers).length
+              ? JSON.stringify(cfg.headers, null, 2)
+              : "",
+          );
+          setWebhookBodyTemplate(cfg.bodyTemplate || "");
           setWebhookApiKey(cfg.apiKey || "");
         } catch (err) {
           // ignore
@@ -611,10 +623,25 @@ export default function DashboardPage() {
       const result = await apiFetch("/api/webhook", {
         method: "POST",
         token,
-        body: { url: webhookUrl, apiKey: webhookApiKey },
+        body: {
+          url: webhookUrl,
+          apiKey: webhookApiKey,
+          enabled: webhookEnabled,
+          method: webhookMethod,
+          headers: webhookHeaders,
+          bodyTemplate: webhookBodyTemplate,
+        },
       });
 
       setWebhookUrl(result.webhook?.url || "");
+      setWebhookEnabled(result.webhook?.enabled !== false);
+      setWebhookMethod(result.webhook?.method || "POST");
+      setWebhookHeaders(
+        result.webhook?.headers && Object.keys(result.webhook.headers).length
+          ? JSON.stringify(result.webhook.headers, null, 2)
+          : "",
+      );
+      setWebhookBodyTemplate(result.webhook?.bodyTemplate || "");
       setWebhookApiKey(result.webhook?.apiKey || "");
     } catch (requestError) {
       setError(requestError.message);
@@ -629,6 +656,10 @@ export default function DashboardPage() {
     try {
       await apiFetch("/api/webhook", { method: "DELETE", token });
       setWebhookUrl("");
+      setWebhookEnabled(true);
+      setWebhookMethod("POST");
+      setWebhookHeaders("");
+      setWebhookBodyTemplate("");
       setWebhookApiKey("");
     } catch (requestError) {
       setError(requestError.message);
@@ -944,8 +975,16 @@ export default function DashboardPage() {
         onRevokeApiKey={handleRevokeApiKey}
         revokingKeyId={revokingKeyId}
         webhookUrl={webhookUrl}
+        webhookEnabled={webhookEnabled}
+        webhookMethod={webhookMethod}
+        webhookHeaders={webhookHeaders}
+        webhookBodyTemplate={webhookBodyTemplate}
         webhookApiKey={webhookApiKey}
         onWebhookUrlChange={setWebhookUrl}
+        onWebhookEnabledChange={setWebhookEnabled}
+        onWebhookMethodChange={setWebhookMethod}
+        onWebhookHeadersChange={setWebhookHeaders}
+        onWebhookBodyTemplateChange={setWebhookBodyTemplate}
         onWebhookApiKeyChange={setWebhookApiKey}
         onSaveWebhook={handleSaveWebhook}
         onDeleteWebhook={handleDeleteWebhook}

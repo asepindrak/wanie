@@ -1,0 +1,10 @@
+{
+  "cmnxo5a760000yclinvb89zh5": {
+    "url": "http://localhost:3000/api/webhooks/studio/587b8897-6c00-4d43-83c0-a89c36a9b861",
+    "enabled": true,
+    "method": "POST",
+    "apiKeyEncrypted": null,
+    "headersEncrypted": "v1:OLjPyCyWHLtosOdL:YeOJTZxRyhpQ+3DBfXxCkA==:eJkfK1B//Rhy4WTBHgk7m6FG7gJZybaQcc/QEK1MLfnu06mpZfklHAa7s4mp67TZqEg/KVJ49TR8L5G/0CzvjUlmHWRZKEvn7I1dn6jFHsOgNZYacoLtjI6vwX7HudEiROYi5lGlHWYm9nMzcYMnK0HdHMWjutCHeUtflDanAO3fwLY=",
+    "bodyTemplate": "{\"chatId\":\"{{chat.id}}\",\"messageId\":\"{{message.id}}\",\"text\":\"{{message.body}}\",\"payload\":{{payload}}}"
+  }
+}

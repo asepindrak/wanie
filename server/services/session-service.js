@@ -3,7 +3,7 @@ const path = require("path");
 const { sessionsDir } = require("../utils/paths");
 async function deleteSession(userId, sessionId) {
   // Hapus dari database
-  await prisma.whatsappSession.delete({
+  const result = await prisma.whatsappSession.deleteMany({
     where: { id: sessionId, userId },
   });
   // Hapus folder session di storage/sessions
@@ -25,6 +25,8 @@ async function deleteSession(userId, sessionId) {
     await prisma.chat.deleteMany({ where: { userId } });
     await prisma.contact.deleteMany({ where: { userId } });
   }
+
+  return { deleted: result.count > 0 };
 }
 const { prisma } = require("../database/client");
 

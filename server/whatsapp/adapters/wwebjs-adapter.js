@@ -111,6 +111,7 @@ function logRemovedProfileLocks(sessionId, removedLocks) {
 
 function normalizeWwebjsMessageType(type) {
   const normalized = String(type || "text").toLowerCase();
+  if (normalized === "location") return "text";
   if (normalized === "image") return "image";
   if (normalized === "video") return "video";
   if (normalized === "audio" || normalized === "ptt" || normalized === "voice")
@@ -124,6 +125,40 @@ function normalizeWwebjsMessageType(type) {
     return "document";
   }
   return "text";
+}
+
+function formatWwebjsLocationMessage(message) {
+  const location = message?.location || {};
+  const data = message?._data || {};
+  const latitude = location.latitude ?? data.lat;
+  const longitude = location.longitude ?? data.lng;
+
+  if (latitude === undefined || longitude === undefined) {
+    return null;
+  }
+
+  const name = location.name || "";
+  const address = location.address || "";
+  const description = location.description || data.loc || "";
+  const url =
+    location.url ||
+    data.clientUrl ||
+    `https://www.google.com/maps?q=${encodeURIComponent(`${latitude},${longitude}`)}`;
+  const parts = [
+    "[WhatsApp location]",
+    name ? `Name: ${name}` : null,
+    address ? `Address: ${address}` : null,
+    !name && !address && description ? `Description: ${description}` : null,
+    `Latitude: ${latitude}`,
+    `Longitude: ${longitude}`,
+    `Map: ${url}`,
+  ].filter(Boolean);
+
+  return parts.join("\n");
+}
+
+function isWwebjsLocationMessage(message) {
+  return String(message?.type || "").toLowerCase() === "location";
 }
 
 function isWhatsAppPrivateId(externalId) {
@@ -230,8 +265,13 @@ class WwebjsAdapter extends EventEmitter {
     let mediaFileId = null;
     let type = normalizeWwebjsMessageType(message.type);
     let body = message.body;
+    const isLocation = isWwebjsLocationMessage(message);
+    if (isLocation) {
+      body = formatWwebjsLocationMessage(message) || "[WhatsApp location]";
+      type = "text";
+    }
 
-    if (message.hasMedia) {
+    if (message.hasMedia && !isLocation) {
       try {
         const media = await message.downloadMedia();
         if (media && media.data) {
@@ -349,7 +389,9 @@ class WwebjsAdapter extends EventEmitter {
           sessionId: this.session.id,
           receiver,
           displayName: receiver,
-          body: message.body || null,
+          body: isWwebjsLocationMessage(message)
+            ? formatWwebjsLocationMessage(message) || "[WhatsApp location]"
+            : message.body || null,
           type: normalizeWwebjsMessageType(message.type),
           externalMessageId: message.id?._serialized || null,
         });
@@ -551,7 +593,9 @@ class WwebjsAdapter extends EventEmitter {
                 sender: message.fromMe
                   ? `user:${this.session.userId}`
                   : message.author || message.from || externalId,
-                body: message.body || null,
+                body: isWwebjsLocationMessage(message)
+                  ? formatWwebjsLocationMessage(message) || "[WhatsApp location]"
+                  : message.body || null,
                 type: normalizeWwebjsMessageType(message.type),
                 direction: message.fromMe ? "outbound" : "inbound",
                 ack: message.ack ?? 0,

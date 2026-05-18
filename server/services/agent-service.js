@@ -102,16 +102,23 @@ function ensureToolsFile() {
 This file documents tools and skills available to the OpenWA Assistant.
 
 Default skills:
-- add_device: create a new WhatsApp session/device for the user.
+- add_device: create a new WhatsApp session/device for the user. Use this only for WhatsApp device/session requests, QR pairing, or WhatsApp number connection. Never use this for Telegram.
 - add_llm_provider: add an LLM provider (OpenAI/Anthropic/Ollama/OpenRouter).
 - update_assistant: change assistant display name, avatar, or persona.
 - create_api_key: generate an API key for the user.
 - update_webhook: set incoming webhook URL and key.
 - setup_gateway_integration: configure OpenWA as an API gateway for an external CRM/ERP/app by setting webhook URL/key, optionally creating an API key, and turning internal CRM automation off.
-- setup_telegram_bot: set up a Telegram bot to remote OpenWA. User must provide a bot token from @BotFather.
+- setup_telegram_bot: set up a Telegram bot to remote OpenWA. Use this for any request that mentions Telegram, Telegram bot, BotFather, bot token, or admin Telegram IDs. User must provide a bot token from @BotFather. Do not create a WhatsApp device/session for Telegram setup.
+- configure_telegram_admins: set the Telegram admin chat ID allowlist. Use this only for Telegram admin access control.
+- get_telegram_bot_status: check whether the user's Telegram bot is configured and currently running.
 - update_tools_md: update this file with new tools/skills provided by user.
 
 The assistant may append new tool descriptions here when the user provides external tool documentation.
+
+Routing rules:
+- If the user asks to set up, connect, configure, check, delete, or manage Telegram, use Telegram tools only.
+- If the user asks to add/connect/pair a WhatsApp device or scan a WhatsApp QR code, use add_device.
+- When the requested channel is ambiguous, ask one short clarification question instead of guessing.
 `;
 
     fs.writeFileSync(TOOLS_PATH, defaultContent, "utf8");
@@ -735,6 +742,15 @@ function buildAssistantSystemPrompt({
   parts.push("");
   parts.push("Strategy & Autonomy:");
   parts.push(
+    "Tool routing is strict: Telegram requests and WhatsApp device requests are different workflows. Do not call WhatsApp device tools for Telegram tasks.",
+  );
+  parts.push(
+    "If the user mentions Telegram, Telegram bot, BotFather, bot token, adminTelegramIds, or Telegram chat ID, use Telegram tools (`setup_telegram_bot`, `configure_telegram_admins`, `get_telegram_bot_status`) and never use `add_device` unless the user separately asks for WhatsApp.",
+  );
+  parts.push(
+    "If the user mentions WhatsApp device, WA device, QR scan, session pairing, or phone number connection, use `add_device`. If the channel is unclear, ask one short clarification question before calling tools.",
+  );
+  parts.push(
     "1. Plan Ahead: If a task requires multiple steps, mention your plan briefly before calling the first tool.",
   );
   parts.push(
@@ -750,13 +766,13 @@ function buildAssistantSystemPrompt({
     "5. Iteration: Analyze tool results. If a command fails, describe why in prose and try a different approach.",
   );
   parts.push(
-    "6. WhatsApp Automation: When adding a new device with 'add_device', the tool will automatically handle session connection, QR code generation, and wait for the user to scan. Once the tool returns successfully, the device is ALREADY connected and sync is complete. You MUST NOT ask the user to connect or scan again. Simply confirm the connection and ask what to do next.",
+    "6. WhatsApp Automation: Use `add_device` only for WhatsApp devices/sessions. When adding a new WhatsApp device with `add_device`, the tool will automatically handle session connection, QR code generation, and wait for the user to scan. Once the tool returns successfully, the device is ALREADY connected and sync is complete. You MUST NOT ask the user to connect or scan again. Simply confirm the connection and ask what to do next.",
   );
   parts.push(
     "7. AI Provider Setup: If no AI provider is configured, ask the user for the provider name, API key, and desired model. Use `add_llm_provider` to save the provider, then persist defaults with `set_default_ai_provider`, `set_default_ai_model`, or `set_ai_defaults`.",
   );
   parts.push(
-    "8. Telegram Setup: Ask the user to create a bot with BotFather and paste the bot token. Use `setup_telegram_bot` with the token to start the bot. If they want access restricted, configure admin Telegram IDs later with `configure_telegram_admins`.",
+    "8. Telegram Setup: If the user asks to set up Telegram, do not create a WhatsApp session and do not show a WhatsApp QR. Ask the user to create a bot with BotFather and paste the bot token. Use `setup_telegram_bot` with the token to start the bot. If they want access restricted, configure admin Telegram IDs later with `configure_telegram_admins`.",
   );
   parts.push(
     "9. API Gateway Setup: If the user wants OpenWA to integrate with an external CRM, ERP, helpdesk, or app as a messaging gateway, ask for the external webhook URL and shared webhook secret if missing. Use `setup_gateway_integration` to set the webhook, create an API key for the external app, and turn internal CRM automation off. Tell the user the returned API key secret is shown only once and must be saved in the external app.",
@@ -977,6 +993,12 @@ const tools = {
   add_device: async (userId, args, ctx) => {
     const name = String(args.name || "").trim();
     const phoneNumber = args.phoneNumber || null;
+    const rawArgs = JSON.stringify(args || {}).toLowerCase();
+    if (/\btelegram\b|botfather|telegram_bot|bot token/.test(rawArgs)) {
+      throw new Error(
+        "This is a Telegram setup request. Use setup_telegram_bot instead of add_device. add_device is only for WhatsApp sessions.",
+      );
+    }
     if (!name) throw new Error("name is required");
     const { sessionManager, io, chatId } = ctx || {};
     if (!sessionManager) throw new Error("sessionManager not found in context");

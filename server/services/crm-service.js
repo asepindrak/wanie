@@ -18,6 +18,8 @@ const defaultSettings = {
   businessName: null,
   persona:
     "Ramah, jelas, profesional, dan membantu. Gunakan Bahasa Indonesia natural.",
+  agentInstructions:
+    "Tugas utama: pahami kebutuhan customer, jawab ringkas dan membantu, gunakan knowledge base bila tersedia, dan arahkan ke admin bila informasi tidak cukup. Jangan mengarang harga, jadwal, promo, kebijakan, atau janji operasional yang tidak ada di knowledge base.",
   fallbackMessage: "Terima kasih, pesan Anda akan dibantu admin kami.",
 };
 
@@ -85,6 +87,7 @@ function serializeSettings(global, sessionRows, chatRows) {
         assistantName: global.assistantName,
         businessName: global.businessName,
         persona: global.persona,
+        agentInstructions: global.agentInstructions,
         fallbackMessage: global.fallbackMessage,
       }
     : {};
@@ -200,6 +203,11 @@ async function updateSettings(userId, payload = {}) {
 
   if (payload.persona !== undefined) {
     data.persona = String(payload.persona || "").trim() || null;
+  }
+
+  if (payload.agentInstructions !== undefined) {
+    data.agentInstructions =
+      String(payload.agentInstructions || "").trim() || null;
   }
 
   if (Object.keys(data).length > 0) {

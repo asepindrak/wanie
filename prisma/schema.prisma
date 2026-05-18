@@ -305,6 +305,7 @@ model CrmAiSetting {
   assistantName               String   @default("OpenWA CRM Assistant")
   businessName                String?
   persona                     String?
+  agentInstructions           String?
   fallbackMessage             String   @default("Terima kasih, pesan Anda akan dibantu admin kami.")
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt

@@ -30,6 +30,7 @@ const crmService = require("../services/crm-service");
 const crmAutoReplyService = require("../services/crm-auto-reply-service");
 const knowledgeService = require("../services/knowledge-service");
 const TelegramConfigService = require("../services/telegram-config-service");
+const TelegramService = require("../services/telegram-service");
 const { prisma } = require("../database/client");
 const {
   createAgentReadme,
@@ -104,6 +105,57 @@ function normalizeTelegramAdminIds(value) {
     .split(/[,;\s]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function maskSecret(value) {
+  const text = String(value || "");
+  if (!text) return "";
+  if (text.length <= 10) return `${text.slice(0, 2)}...${text.slice(-2)}`;
+  return `${text.slice(0, 6)}...${text.slice(-4)}`;
+}
+
+function extractJsonObject(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1].trim() : raw;
+
+  try {
+    return JSON.parse(candidate);
+  } catch (err) {
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(candidate.slice(start, end + 1));
+    }
+    throw err;
+  }
+}
+
+function normalizeGeneratedWebhookConfig(value = {}) {
+  const headers =
+    value.headers && typeof value.headers === "object" && !Array.isArray(value.headers)
+      ? value.headers
+      : {};
+  const method = String(value.method || "POST").trim().toUpperCase();
+  const allowedMethods = new Set(["POST", "PUT", "PATCH", "DELETE", "GET"]);
+
+  return {
+    url: String(value.url || "").trim(),
+    method: allowedMethods.has(method) ? method : "POST",
+    headers: Object.entries(headers).reduce((acc, [key, headerValue]) => {
+      const name = String(key || "").trim();
+      if (!name) return acc;
+      acc[name] = String(headerValue ?? "");
+      return acc;
+    }, {}),
+    bodyTemplate:
+      typeof value.bodyTemplate === "string"
+        ? value.bodyTemplate
+        : JSON.stringify(value.bodyTemplate || {}, null, 2),
+    notes: String(value.notes || "").trim(),
+  };
 }
 
 function createKnowledgeUploader() {
@@ -218,6 +270,17 @@ async function deliverOutgoingApiMessage({
   return result;
 }
 
+function emitChatResult(io, userId, result) {
+  if (!io || !userId || !result) return;
+  const room = `user:${userId}`;
+  if (result.message) {
+    io.to(room).emit("new_message", result.message);
+  }
+  if (result.chat) {
+    io.to(room).emit("contact_list_update", result.chat);
+  }
+}
+
 function createApp({ config, sessionManager }) {
   const app = express();
   // CORS middleware harus di paling atas
@@ -248,9 +311,22 @@ function createApp({ config, sessionManager }) {
   // Endpoint DELETE session harus di sini agar app dan requireAuth sudah terdefinisi
   app.delete("/api/sessions/:sessionId", requireAuth, async (req, res) => {
     try {
-      await sessionManager.disconnectSession(req.user.id, req.params.sessionId);
-      await sessionService.deleteSession(req.user.id, req.params.sessionId);
-      res.json({ ok: true });
+      try {
+        await sessionManager.disconnectSession(req.user.id, req.params.sessionId);
+      } catch (disconnectError) {
+        if (disconnectError.message !== "Session not found.") {
+          console.warn(
+            `Failed to disconnect session before delete (${req.params.sessionId}):`,
+            disconnectError.message,
+          );
+        }
+      }
+
+      const result = await sessionService.deleteSession(
+        req.user.id,
+        req.params.sessionId,
+      );
+      res.json({ ok: true, deleted: Boolean(result?.deleted) });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
@@ -589,14 +665,71 @@ function createApp({ config, sessionManager }) {
     "/api/webhook",
     requireDashboardAuth,
     withAsync(async (req, res) => {
-      const { url, apiKey } = req.body || {};
+      const { url, apiKey, enabled, method, headers, bodyTemplate } =
+        req.body || {};
       if (!url) {
         return res.status(400).json({ error: "url is required" });
       }
 
-      const cfg = webhookService.setWebhook(req.user.id, { url, apiKey });
+      const cfg = webhookService.setWebhook(req.user.id, {
+        url,
+        apiKey,
+        enabled,
+        method,
+        headers,
+        bodyTemplate,
+      });
       res.json({ ok: true, webhook: cfg });
-    }),
+    }, 400),
+  );
+
+  app.post(
+    "/api/webhook/generate-config",
+    requireDashboardAuth,
+    withAsync(async (req, res) => {
+      const prompt = String(req.body?.prompt || "").trim();
+      if (!prompt) {
+        return res.status(400).json({ error: "prompt is required" });
+      }
+
+      const instruction = `You generate OpenWA outgoing webhook configuration for an external application.
+
+Return strict JSON only, no markdown, with this shape:
+{
+  "url": "https://external-app.example/webhook",
+  "method": "POST",
+  "headers": {
+    "Authorization": "Bearer token-or-placeholder",
+    "x-api-key": "api-key-or-placeholder"
+  },
+  "bodyTemplate": "{\\"chatId\\":\\"{{chat.id}}\\",\\"messageId\\":\\"{{message.id}}\\",\\"text\\":\\"{{message.body}}\\",\\"payload\\":{{payload}}}",
+  "notes": "Short setup note"
+}
+
+Rules:
+- Infer the URL, HTTP method, auth headers, and request body from the user's example.
+- Keep secret values as placeholders when the user does not provide exact values.
+- Use OpenWA placeholders in bodyTemplate: {{payload}}, {{chat.id}}, {{chat.title}}, {{chat.transportType}}, {{chat.contact.externalId}}, {{message.id}}, {{message.body}}, {{message.type}}, {{message.mediaFile.url}}.
+- bodyTemplate must be a string. It may contain JSON with placeholders.
+- Prefer JSON body unless the external example clearly requires another format.`;
+
+      const result = await llmService.generate(req.user.id, {
+        temperature: 0.1,
+        messages: [
+          { role: "system", content: instruction },
+          { role: "user", content: prompt },
+        ],
+      });
+      const parsed = extractJsonObject(result?.text || result);
+      const config = normalizeGeneratedWebhookConfig(parsed || {});
+      if (!config.url) {
+        return res
+          .status(400)
+          .json({ error: "AI did not return a webhook URL." });
+      }
+
+      res.json({ config });
+    }, 400),
   );
 
   app.delete(
@@ -702,6 +835,7 @@ function createApp({ config, sessionManager }) {
           adminTelegramIds: Array.isArray(config.adminTelegramIds)
             ? config.adminTelegramIds.map((item) => String(item))
             : [],
+          aiReplyEnabled: config.aiReplyEnabled !== false,
         },
       });
     }),
@@ -716,15 +850,72 @@ function createApp({ config, sessionManager }) {
       );
       const config = TelegramConfigService.saveConfig(req.user.id, {
         adminTelegramIds,
+        aiReplyEnabled: req.body?.aiReplyEnabled !== false,
       });
 
       res.json({
         ok: true,
         config: {
           adminTelegramIds: config.adminTelegramIds,
+          aiReplyEnabled: config.aiReplyEnabled !== false,
         },
       });
     }),
+  );
+
+  app.get(
+    "/api/telegram/bots",
+    requireDashboardAuth,
+    withAsync(async (req, res) => {
+      const credential = await toolCredentialService.getCredentialForUser(
+        req.user.id,
+        "telegram_bot",
+      );
+      const status = TelegramService.getBotStatus(req.user.id);
+      const bots =
+        credential || status.running
+          ? [
+              {
+                id: "telegram_bot",
+                name: status.username ? `@${status.username}` : "Telegram Bot",
+                username: status.username,
+                botId: status.id,
+                configured: Boolean(credential?.apiKey),
+                running: Boolean(status.running),
+                tokenPreview: credential?.apiKey
+                  ? maskSecret(credential.apiKey)
+                  : "",
+                addedAt: credential?.addedAt || null,
+              },
+            ]
+          : [];
+
+      res.json({ bots });
+    }),
+  );
+
+  app.delete(
+    "/api/telegram/bots/:botId",
+    requireDashboardAuth,
+    withAsync(async (req, res) => {
+      if (req.params.botId !== "telegram_bot") {
+        return res.status(404).json({ error: "Telegram bot not found." });
+      }
+
+      await TelegramService.stopBot(req.user.id);
+      try {
+        await toolCredentialService.removeCredentialForUser(
+          req.user.id,
+          "telegram_bot",
+        );
+      } catch (error) {
+        if (error.message !== "credential not found") {
+          throw error;
+        }
+      }
+
+      res.json({ ok: true });
+    }, 400),
   );
 
   // AI Provider management (dashboard-only)
@@ -1742,6 +1933,7 @@ function createApp({ config, sessionManager }) {
         io: req.app.get("io"),
       });
 
+      emitChatResult(req.app.get("io"), req.user.id, result);
       res.json(result);
     } catch (error) {
       res.status(error?.code === "P1008" ? 503 : 400).json({
@@ -1897,6 +2089,7 @@ function createApp({ config, sessionManager }) {
           io: req.app.get("io"),
         });
 
+        emitChatResult(req.app.get("io"), req.user.id, result);
         res.json(result);
       } catch (error) {
         res.status(error?.code === "P1008" ? 503 : 400).json({

@@ -34,10 +34,44 @@ function isAdminChat(userId, telegramChatId) {
 function hasWebhook(userId) {
   const webhookService = require("./webhook-service");
   const config = webhookService.getWebhook(userId);
-  return Boolean(config?.url);
+  return Boolean(config?.url && config.enabled !== false);
+}
+
+function isAiReplyEnabled(userId) {
+  const config = TelegramConfigService.getConfig(userId) || {};
+  return config.aiReplyEnabled !== false;
+}
+
+function formatTelegramLocationMessage(location = {}) {
+  const latitude = location.latitude;
+  const longitude = location.longitude;
+  if (latitude === undefined || longitude === undefined) {
+    return "[Telegram location]";
+  }
+
+  const mapUrl = `https://www.google.com/maps?q=${encodeURIComponent(`${latitude},${longitude}`)}`;
+  return [
+    "[Telegram location]",
+    `Latitude: ${latitude}`,
+    `Longitude: ${longitude}`,
+    `Map: ${mapUrl}`,
+  ].join("\n");
+}
+
+async function ensureTelegramUser(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true },
+  });
+  if (!user) {
+    throw new Error(`Telegram bot owner user not found: ${userId}`);
+  }
+  return user;
 }
 
 async function ensureTelegramChat(userId, telegramChatId, displayName) {
+  await ensureTelegramUser(userId);
+
   let contact = await prisma.contact.findFirst({
     where: {
       userId,
@@ -237,6 +271,9 @@ class TelegramService {
   }
 
   static async startBot(userId, token) {
+    if (!token) throw new Error("Telegram bot token is required.");
+    await ensureTelegramUser(userId);
+
     if (bots[userId]) {
       try {
         await bots[userId].stop();
@@ -273,6 +310,10 @@ class TelegramService {
       emitTelegramIncoming(incoming, userId);
       await notifyTelegramWebhook(userId, incoming);
 
+      if (!isAiReplyEnabled(userId)) {
+        return;
+      }
+
       if (crmMode === "off") {
         if (!hasWebhook(userId)) {
           await ctx.reply(
@@ -303,53 +344,88 @@ class TelegramService {
     });
 
     bot.on("text", async (ctx) => {
-      const telegramChatId = String(ctx.chat.id);
-      const text = ctx.message.text;
-      const normalizedText = String(text || "").trim();
-      const displayName = getTelegramDisplayName(ctx);
+      try {
+        const telegramChatId = String(ctx.chat.id);
+        const text = ctx.message.text;
+        const normalizedText = String(text || "").trim();
+        const displayName = getTelegramDisplayName(ctx);
+        const aiReplyEnabled = isAiReplyEnabled(userId);
 
-      if (isAdminChat(userId, telegramChatId)) {
-        // Admin chats keep the existing remote-assistant behavior.
-        const chat = await ensureTelegramChat(
-          userId,
-          telegramChatId,
-          displayName,
-        );
-
-        if (normalizedText.toLowerCase() === "/new") {
-          const newChat = await chatService.createAssistantConversation(
+        if (aiReplyEnabled && isAdminChat(userId, telegramChatId)) {
+          // Admin chats keep the existing remote-assistant behavior.
+          const chat = await ensureTelegramChat(
             userId,
-            {},
+            telegramChatId,
+            displayName,
           );
-          if (ioInstance) {
-            ioInstance.to(`user:${userId}`).emit("contact_list_update", newChat);
+
+          if (normalizedText.toLowerCase() === "/new") {
+            const newChat = await chatService.createAssistantConversation(
+              userId,
+              {},
+            );
+            if (ioInstance) {
+              ioInstance.to(`user:${userId}`).emit("contact_list_update", newChat);
+            }
+            await ctx.reply(
+              "Konteks baru telah dimulai. Saya membuat sesi assistant baru untuk Anda.",
+            );
+            return;
           }
-          await ctx.reply(
-            "Konteks baru telah dimulai. Saya membuat sesi assistant baru untuk Anda.",
+
+          const agentService = require("./agent-service");
+          await agentService.handleAssistantMessage(
+            userId,
+            chat.id,
+            { body: text },
+            {
+              transport: "telegram",
+              telegramCtx: ctx,
+              io: ioInstance,
+            },
           );
           return;
         }
 
-        const agentService = require("./agent-service");
-        await agentService.handleAssistantMessage(
-          userId,
-          chat.id,
-          { body: text },
-          {
-            transport: "telegram",
-            telegramCtx: ctx,
-            io: ioInstance,
-          },
-        );
-        return;
+        await handleCustomerMessage({
+          ctx,
+          telegramChatId,
+          displayName,
+          body: normalizedText,
+        });
+      } catch (error) {
+        console.error("[TelegramService] Telegram text handling failed:", error);
+        if (/owner user not found/i.test(String(error?.message || ""))) {
+          await TelegramService.stopBot(userId).catch(() => {});
+          await toolCredentialService
+            .removeCredentialForUser(userId, "telegram_bot")
+            .catch(() => {});
+        }
       }
+    });
 
-      await handleCustomerMessage({
-        ctx,
-        telegramChatId,
-        displayName,
-        body: normalizedText,
-      });
+    bot.on("location", async (ctx) => {
+      try {
+        const telegramChatId = String(ctx.chat.id);
+        const displayName = getTelegramDisplayName(ctx);
+        const body = formatTelegramLocationMessage(ctx.message.location || {});
+
+        await handleCustomerMessage({
+          ctx,
+          telegramChatId,
+          displayName,
+          body,
+          type: "text",
+        });
+      } catch (error) {
+        console.error("[TelegramService] Telegram location handling failed:", error);
+        if (/owner user not found/i.test(String(error?.message || ""))) {
+          await TelegramService.stopBot(userId).catch(() => {});
+          await toolCredentialService
+            .removeCredentialForUser(userId, "telegram_bot")
+            .catch(() => {});
+        }
+      }
     });
 
     const handleTelegramMedia = async (ctx) => {
@@ -378,6 +454,13 @@ class TelegramService {
         });
       } catch (error) {
         console.error("[TelegramService] Telegram media handling failed:", error);
+        if (/owner user not found/i.test(String(error?.message || ""))) {
+          await TelegramService.stopBot(userId).catch(() => {});
+          await toolCredentialService
+            .removeCredentialForUser(userId, "telegram_bot")
+            .catch(() => {});
+          return;
+        }
         await ctx.reply(
           "Maaf, media belum bisa diproses saat ini. Silakan coba lagi atau kirim pesan teks.",
         );
@@ -416,6 +499,11 @@ class TelegramService {
             await TelegramService.startBot(userId, cred.apiKey);
           }
         } catch (e) {
+          if (/owner user not found/i.test(String(e?.message || ""))) {
+            await toolCredentialService
+              .removeCredentialForUser(userId, "telegram_bot")
+              .catch(() => {});
+          }
           console.error(
             `[TelegramService] Failed to initialize bot for user ${userId}:`,
             e,
@@ -436,6 +524,15 @@ class TelegramService {
 
   static isBotRunning(userId) {
     return Boolean(bots[userId]);
+  }
+
+  static getBotStatus(userId) {
+    const bot = bots[userId];
+    return {
+      running: Boolean(bot),
+      username: bot?.botInfo?.username || null,
+      id: bot?.botInfo?.id ? String(bot.botInfo.id) : null,
+    };
   }
 
   static async stopAll() {

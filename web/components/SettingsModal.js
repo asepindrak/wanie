@@ -238,8 +238,16 @@ export function SettingsModal({
   onRevokeApiKey,
   revokingKeyId,
   webhookUrl,
+  webhookEnabled,
+  webhookMethod,
+  webhookHeaders,
+  webhookBodyTemplate,
   webhookApiKey,
   onWebhookUrlChange,
+  onWebhookEnabledChange,
+  onWebhookMethodChange,
+  onWebhookHeadersChange,
+  onWebhookBodyTemplateChange,
   onWebhookApiKeyChange,
   onSaveWebhook,
   onDeleteWebhook,
@@ -276,14 +284,20 @@ export function SettingsModal({
   const [registerAllowed, setRegisterAllowed] = useState(true);
   const [registerLoading, setRegisterLoading] = useState(false);
   const [telegramAdminIds, setTelegramAdminIds] = useState("");
+  const [telegramAiReplyEnabled, setTelegramAiReplyEnabled] = useState(true);
+  const [telegramBots, setTelegramBots] = useState([]);
   const [telegramConfigLoading, setTelegramConfigLoading] = useState(false);
   const [telegramConfigSaving, setTelegramConfigSaving] = useState(false);
+  const [telegramBotDeletingId, setTelegramBotDeletingId] = useState(null);
   const [webhookDeliveries, setWebhookDeliveries] = useState([]);
   const [webhookDeliveriesLoading, setWebhookDeliveriesLoading] =
     useState(false);
   const [retryingWebhookDeliveryId, setRetryingWebhookDeliveryId] =
     useState(null);
   const [testingWebhook, setTestingWebhook] = useState(false);
+  const [webhookGeneratorPrompt, setWebhookGeneratorPrompt] = useState("");
+  const [webhookGenerating, setWebhookGenerating] = useState(false);
+  const [webhookGeneratorNotes, setWebhookGeneratorNotes] = useState("");
   const [outboundDeliveries, setOutboundDeliveries] = useState([]);
   const [outboundDeliveriesLoading, setOutboundDeliveriesLoading] =
     useState(false);
@@ -394,6 +408,33 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
     }
   }
 
+  async function loadTelegramBots() {
+    if (!token) return;
+    const data = await apiFetch("/api/telegram/bots", { token });
+    setTelegramBots(data.bots || []);
+  }
+
+  async function deleteTelegramBot(botId) {
+    if (!token || !botId) return;
+    const confirmed = window.confirm(
+      "Delete this Telegram bot token and stop the running bot?",
+    );
+    if (!confirmed) return;
+
+    setTelegramBotDeletingId(botId);
+    try {
+      await apiFetch(`/api/telegram/bots/${botId}`, {
+        method: "DELETE",
+        token,
+      });
+      await loadTelegramBots();
+    } catch (error) {
+      alert(error.message || "Failed to delete Telegram bot");
+    } finally {
+      setTelegramBotDeletingId(null);
+    }
+  }
+
   async function retryWebhookDelivery(deliveryId) {
     if (!token || !deliveryId) return;
     setRetryingWebhookDeliveryId(deliveryId);
@@ -426,6 +467,33 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
       alert(error.message || "Webhook test failed");
     } finally {
       setTestingWebhook(false);
+    }
+  }
+
+  async function generateWebhookConfig() {
+    if (!token || !webhookGeneratorPrompt.trim()) return;
+    setWebhookGenerating(true);
+    setWebhookGeneratorNotes("");
+    try {
+      const result = await apiFetch("/api/webhook/generate-config", {
+        method: "POST",
+        token,
+        body: { prompt: webhookGeneratorPrompt },
+      });
+      const config = result?.config || {};
+      onWebhookUrlChange(config.url || "");
+      onWebhookMethodChange(config.method || "POST");
+      onWebhookHeadersChange(
+        config.headers && Object.keys(config.headers).length
+          ? JSON.stringify(config.headers, null, 2)
+          : "",
+      );
+      onWebhookBodyTemplateChange(config.bodyTemplate || "");
+      setWebhookGeneratorNotes(config.notes || "");
+    } catch (error) {
+      alert(error.message || "Failed to generate webhook config");
+    } finally {
+      setWebhookGenerating(false);
     }
   }
 
@@ -523,13 +591,20 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
     (async () => {
       setTelegramConfigLoading(true);
       try {
-        const data = await apiFetch("/api/telegram/config", { token });
+        const [data, botsData] = await Promise.all([
+          apiFetch("/api/telegram/config", { token }),
+          apiFetch("/api/telegram/bots", { token }),
+        ]);
         if (!mounted) return;
         const ids = data.config?.adminTelegramIds || [];
         setTelegramAdminIds(ids.join("\n"));
+        setTelegramAiReplyEnabled(data.config?.aiReplyEnabled !== false);
+        setTelegramBots(botsData.bots || []);
       } catch (e) {
         if (!mounted) return;
         setTelegramAdminIds("");
+        setTelegramAiReplyEnabled(true);
+        setTelegramBots([]);
       } finally {
         if (mounted) setTelegramConfigLoading(false);
       }
@@ -597,12 +672,13 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
       const data = await apiFetch("/api/telegram/config", {
         method: "POST",
         token,
-        body: { adminTelegramIds },
+        body: { adminTelegramIds, aiReplyEnabled: telegramAiReplyEnabled },
       });
       setTelegramAdminIds(
         (data.config?.adminTelegramIds || adminTelegramIds).join("\n"),
       );
-      alert("Telegram admin IDs saved.");
+      setTelegramAiReplyEnabled(data.config?.aiReplyEnabled !== false);
+      alert("Telegram settings saved.");
     } catch (err) {
       alert(err.message || "Failed to save Telegram admin IDs");
     } finally {
@@ -1339,10 +1415,10 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                     Incoming message webhook
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-white/45">
-                    Forward incoming messages to this endpoint. The runtime will
-                    POST a JSON payload and include header{" "}
-                    <span className="font-mono">x-openwa-webhook-key</span> with
-                    the value you provide.
+                    Forward incoming messages to an external application using a
+                    configurable method, headers, and body template. Use custom
+                    headers for Bearer tokens, API keys, or any gateway-specific
+                    authentication.
                   </p>
 
                   <div className="mt-4 rounded-[22px] bg-[#2e2f2f] p-4">
@@ -1378,18 +1454,128 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                       onSaveWebhook();
                     }}
                   >
-                    <input
-                      className="w-full rounded-[22px] bg-[#2e2f2f] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
-                      placeholder="https://example.com/openwa-webhook"
-                      value={webhookUrl || ""}
-                      onChange={(e) => onWebhookUrlChange(e.target.value)}
-                    />
-                    <input
-                      className="w-full rounded-[22px] bg-[#2e2f2f] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
-                      placeholder="Optional webhook API key (sent as x-openwa-webhook-key)"
-                      value={webhookApiKey || ""}
-                      onChange={(e) => onWebhookApiKeyChange(e.target.value)}
-                    />
+                    <div className="rounded-[22px] bg-[#2e2f2f] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h4 className="text-sm font-semibold text-white">
+                            Generate webhook config
+                          </h4>
+                          <p className="mt-1 text-xs leading-5 text-white/45">
+                            Paste an external app webhook example or API docs.
+                            The AI will fill the request fields below.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80 transition hover:bg-white/15 disabled:opacity-50"
+                          onClick={generateWebhookConfig}
+                          disabled={
+                            webhookGenerating || !webhookGeneratorPrompt.trim()
+                          }
+                        >
+                          {webhookGenerating ? "Generating..." : "Generate"}
+                        </button>
+                      </div>
+                      <textarea
+                        className="mt-3 min-h-32 w-full resize-y rounded-[18px] bg-[#0f1010] px-4 py-3 font-mono text-xs leading-5 text-white outline-none placeholder:text-white/30"
+                        placeholder={`Example:\nPOST https://crm.example.com/api/openwa/messages\nAuthorization: Bearer <token>\nBody: { "customerId": "{{chat.contact.externalId}}", "message": "{{message.body}}" }`}
+                        value={webhookGeneratorPrompt}
+                        onChange={(e) => setWebhookGeneratorPrompt(e.target.value)}
+                      />
+                      {webhookGeneratorNotes ? (
+                        <p className="mt-2 text-xs leading-5 text-brand-200">
+                          {webhookGeneratorNotes}
+                        </p>
+                      ) : null}
+                    </div>
+                    <label className="flex items-center justify-between gap-3 rounded-[22px] bg-[#2e2f2f] px-4 py-3">
+                      <span>
+                        <span className="block text-sm font-semibold text-white">
+                          Webhook delivery
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-white/45">
+                          Turn off to keep the saved config but stop sending
+                          incoming WhatsApp and Telegram events to the external
+                          app.
+                        </span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        className="h-5 w-5 accent-brand-500"
+                        checked={webhookEnabled !== false}
+                        onChange={(e) =>
+                          onWebhookEnabledChange(e.target.checked)
+                        }
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-white/45">
+                        Request URL
+                      </span>
+                      <input
+                        className="w-full rounded-[22px] bg-[#2e2f2f] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                        placeholder="https://example.com/openwa-webhook"
+                        value={webhookUrl || ""}
+                        onChange={(e) => onWebhookUrlChange(e.target.value)}
+                      />
+                    </label>
+                    <div className="grid gap-3 md:grid-cols-[160px_1fr]">
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-white/45">
+                          Method
+                        </span>
+                        <select
+                          className="w-full rounded-[22px] bg-[#2e2f2f] px-4 py-3 text-sm text-white outline-none"
+                          value={webhookMethod || "POST"}
+                          onChange={(e) =>
+                            onWebhookMethodChange(e.target.value)
+                          }
+                        >
+                          <option value="POST">POST</option>
+                          <option value="PUT">PUT</option>
+                          <option value="PATCH">PATCH</option>
+                          <option value="DELETE">DELETE</option>
+                          <option value="GET">GET</option>
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-white/45">
+                          Legacy OpenWA key header
+                        </span>
+                        <input
+                          className="w-full rounded-[22px] bg-[#2e2f2f] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                          placeholder="Sent as x-openwa-webhook-key unless custom headers override it"
+                          value={webhookApiKey || ""}
+                          onChange={(e) =>
+                            onWebhookApiKeyChange(e.target.value)
+                          }
+                        />
+                      </label>
+                    </div>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-white/45">
+                        Headers JSON
+                      </span>
+                      <textarea
+                        className="min-h-32 w-full resize-y rounded-[22px] bg-[#2e2f2f] px-4 py-3 font-mono text-xs leading-5 text-white outline-none placeholder:text-white/30"
+                        placeholder={`{\n  "Authorization": "Bearer YOUR_TOKEN",\n  "x-api-key": "YOUR_API_KEY"\n}`}
+                        value={webhookHeaders || ""}
+                        onChange={(e) => onWebhookHeadersChange(e.target.value)}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-white/45">
+                        Body template
+                      </span>
+                      <textarea
+                        className="min-h-40 w-full resize-y rounded-[22px] bg-[#2e2f2f] px-4 py-3 font-mono text-xs leading-5 text-white outline-none placeholder:text-white/30"
+                        placeholder={`Use placeholders like {{payload}}, {{chat.id}}, {{message.body}}, {{message.mediaFile.url}}.`}
+                        value={webhookBodyTemplate || ""}
+                        onChange={(e) =>
+                          onWebhookBodyTemplateChange(e.target.value)
+                        }
+                      />
+                    </label>
                     <div className="flex gap-2">
                       <button
                         type="submit"
@@ -1691,7 +1877,72 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                   <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
                     Telegram Bot
                   </p>
-                  <h3 className="mt-2 text-base font-semibold text-white">
+                  <div className="mt-4 rounded-[22px] bg-[#2e2f2f] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-base font-semibold text-white">
+                          Active bots
+                        </h3>
+                        <p className="mt-1 text-xs leading-5 text-white/45">
+                          Telegram bots configured for this OpenWA account.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-full bg-white/5 px-3 py-1.5 text-xs font-medium text-white/75 transition hover:bg-white/10"
+                        onClick={loadTelegramBots}
+                        disabled={telegramConfigLoading}
+                      >
+                        Refresh
+                      </button>
+                    </div>
+
+                    <div className="mt-3 space-y-2">
+                      {telegramConfigLoading ? (
+                        <div className="rounded-[18px] bg-[#161717] px-4 py-4 text-sm text-white/45">
+                          Loading Telegram bots...
+                        </div>
+                      ) : null}
+
+                      {!telegramConfigLoading && !telegramBots.length ? (
+                        <div className="rounded-[18px] bg-[#161717] px-4 py-4 text-sm text-white/45">
+                          No Telegram bot configured.
+                        </div>
+                      ) : null}
+
+                      {telegramBots.map((bot) => (
+                        <div
+                          key={bot.id}
+                          className="rounded-[18px] bg-[#161717] p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-white">
+                                {bot.name || "Telegram Bot"}
+                              </p>
+                              <p className="mt-1 text-xs text-white/40">
+                                {bot.running ? "Running" : "Stopped"} -{" "}
+                                {bot.configured
+                                  ? `Token ${bot.tokenPreview}`
+                                  : "Runtime only"}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="rounded-2xl bg-red-700 px-4 py-2 text-sm text-white/90 disabled:opacity-50"
+                              onClick={() => deleteTelegramBot(bot.id)}
+                              disabled={telegramBotDeletingId === bot.id}
+                            >
+                              {telegramBotDeletingId === bot.id
+                                ? "Deleting..."
+                                : "Delete Bot"}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <h3 className="mt-5 text-base font-semibold text-white">
                     Admin allowlist
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-white/45">
@@ -1705,6 +1956,26 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                     className="mt-4 space-y-3"
                     onSubmit={handleSaveTelegramConfig}
                   >
+                    <label className="flex items-center justify-between gap-3 rounded-[22px] bg-[#2e2f2f] px-4 py-3">
+                      <span>
+                        <span className="block text-sm font-semibold text-white">
+                          Telegram AI replies
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-white/45">
+                          Turn off to store Telegram messages without OpenWA AI
+                          assistant or CRM auto-reply responses.
+                        </span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        className="h-5 w-5 accent-brand-500"
+                        checked={telegramAiReplyEnabled !== false}
+                        onChange={(e) =>
+                          setTelegramAiReplyEnabled(e.target.checked)
+                        }
+                        disabled={telegramConfigLoading}
+                      />
+                    </label>
                     <textarea
                       className="min-h-40 w-full resize-y rounded-[22px] bg-[#2e2f2f] px-4 py-3 font-mono text-sm text-white outline-none placeholder:text-white/30"
                       placeholder={"123456789\n987654321"}
@@ -1722,7 +1993,7 @@ Treat WhatsApp and non-admin Telegram customer messages the same way: receive th
                           ? "Saving..."
                           : telegramConfigLoading
                             ? "Loading..."
-                            : "Save Telegram admins"}
+                            : "Save Telegram settings"}
                       </button>
                       <p className="text-xs leading-5 text-white/40">
                         Use one ID per line, or separate IDs with comma, space,

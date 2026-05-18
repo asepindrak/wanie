@@ -45,6 +45,8 @@ const defaultCrmSettings = {
   businessName: "",
   persona:
     "Ramah, jelas, profesional, dan membantu. Gunakan Bahasa Indonesia natural.",
+  agentInstructions:
+    "Tugas utama: pahami kebutuhan customer, jawab ringkas dan membantu, gunakan knowledge base bila tersedia, dan arahkan ke admin bila informasi tidak cukup. Jangan mengarang harga, jadwal, promo, kebijakan, atau janji operasional yang tidak ada di knowledge base.",
   fallbackMessage: "Terima kasih, pesan Anda akan dibantu admin kami.",
   sessionModes: {},
   chatModes: {},
@@ -1664,6 +1666,29 @@ export default function CrmPage() {
                       })
                     }
                   />
+                  <label className="mt-3 block text-xs text-white/45">
+                    Instructions / agent behavior
+                  </label>
+                  <textarea
+                    className="mt-2 min-h-36 w-full rounded-2xl bg-[#111b21] px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/30"
+                    placeholder="Contoh: Tanyakan kota/alamat jika customer ingin booking. Jika harga/jadwal tidak ada di knowledge, jangan menebak. Untuk komplain, minta nomor order dan ringkas masalahnya. Untuk pertanyaan di luar layanan, jawab edukatif selama masih terkait kebersihan."
+                    value={settings.agentInstructions || ""}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        agentInstructions: event.target.value,
+                      }))
+                    }
+                    onBlur={(event) =>
+                      saveCrmSettingsPatch({
+                        agentInstructions: event.target.value,
+                      })
+                    }
+                  />
+                  <p className="mt-2 text-xs leading-5 text-white/35">
+                    Use this for SOP, boundaries, escalation rules, and what the
+                    agent should do when the knowledge base is incomplete.
+                  </p>
                   <label className="mt-3 block text-xs text-white/45">
                     Fallback message
                   </label>

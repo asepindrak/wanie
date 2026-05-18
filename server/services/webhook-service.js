@@ -25,6 +25,7 @@ const retryDelaysMs = String(
   .map((item) => Number(item.trim()))
   .filter((item) => Number.isFinite(item) && item >= 0);
 const activeDeliveries = new Set();
+const allowedMethods = new Set(["POST", "PUT", "PATCH", "DELETE", "GET"]);
 
 let workerTimer = null;
 let cleanupTimer = null;
@@ -85,6 +86,118 @@ function decryptSecret(value) {
   ]).toString("utf8");
 }
 
+function decryptJsonSecret(value, fallback = {}) {
+  const raw = decryptSecret(value);
+  if (!raw) return fallback;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : fallback;
+  } catch (err) {
+    return fallback;
+  }
+}
+
+function normalizeMethod(value) {
+  const method = String(value || "POST").trim().toUpperCase();
+  return allowedMethods.has(method) ? method : "POST";
+}
+
+function normalizeHeaders(value) {
+  if (!value) return {};
+
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch (err) {
+      throw new Error("headers must be a valid JSON object.");
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("headers must be a valid JSON object.");
+  }
+
+  return Object.entries(parsed).reduce((acc, [key, headerValue]) => {
+    const name = String(key || "").trim();
+    if (!name) return acc;
+    acc[name] = String(headerValue ?? "");
+    return acc;
+  }, {});
+}
+
+function hasHeader(headers, name) {
+  const target = String(name || "").toLowerCase();
+  return Object.keys(headers || {}).some(
+    (key) => String(key).toLowerCase() === target,
+  );
+}
+
+function getPathValue(source, pathValue) {
+  return String(pathValue || "")
+    .split(".")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .reduce((current, part) => {
+      if (current === null || current === undefined) return undefined;
+      return current[part];
+    }, source);
+}
+
+function resolveTemplateValue(expr, payload) {
+  const key = String(expr || "").trim();
+  if (!key) return "";
+  if (key === "payload") return payload || {};
+  const value = getPathValue(payload || {}, key);
+  return value === undefined || value === null ? "" : value;
+}
+
+function renderTextTemplate(template, payload) {
+  return String(template || "").replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, expr) => {
+    const key = String(expr || "").trim();
+    if (!key) return "";
+    const value = resolveTemplateValue(key, payload);
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  });
+}
+
+function renderJsonTemplate(template, payload) {
+  return String(template || "")
+    .replace(/"\{\{\s*([^}]+?)\s*\}\}"/g, (_, expr) =>
+      JSON.stringify(resolveTemplateValue(expr, payload)),
+    )
+    .replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, expr) =>
+      JSON.stringify(resolveTemplateValue(expr, payload)),
+    );
+}
+
+function renderRequestBody(cfg, payload) {
+  const template = String(cfg.bodyTemplate || "").trim();
+  if (!template) {
+    return {
+      body: JSON.stringify(payload),
+      contentType: "application/json",
+    };
+  }
+
+  const rendered = renderJsonTemplate(template, payload);
+  try {
+    return {
+      body: JSON.stringify(JSON.parse(rendered)),
+      contentType: "application/json",
+    };
+  } catch (err) {
+    return {
+      body: renderTextTemplate(template, payload),
+      contentType: "text/plain",
+    };
+  }
+}
+
 function readStore() {
   try {
     if (!fs.existsSync(storePath)) return {};
@@ -108,44 +221,66 @@ function normalizeConfigForRead(config) {
   if (!config) return null;
   return {
     url: config.url || "",
+    enabled: config.enabled !== false,
+    method: normalizeMethod(config.method),
     apiKey: config.apiKeyEncrypted
       ? decryptSecret(config.apiKeyEncrypted)
       : config.apiKey || "",
+    headers: config.headersEncrypted
+      ? decryptJsonSecret(config.headersEncrypted, {})
+      : normalizeHeaders(config.headers || {}),
+    bodyTemplate: config.bodyTemplate || "",
   };
 }
 
 function normalizeConfigForWrite(config = {}) {
   const apiKey = String(config.apiKey || "");
+  const headers = normalizeHeaders(config.headers || {});
   return {
     url: String(config.url || "").trim(),
+    enabled: config.enabled !== false,
+    method: normalizeMethod(config.method),
     apiKeyEncrypted: encryptSecret(apiKey),
+    headersEncrypted: encryptSecret(JSON.stringify(headers)),
+    bodyTemplate: String(config.bodyTemplate || ""),
   };
 }
 
 async function deliver(cfg, payload) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), deliveryTimeoutMs);
+  const method = normalizeMethod(cfg.method);
+  const headers = { ...(cfg.headers || {}) };
+  if (cfg.apiKey && !hasHeader(headers, "x-openwa-webhook-key")) {
+    headers["x-openwa-webhook-key"] = cfg.apiKey;
+  }
+
+  let body;
+  if (method !== "GET") {
+    const rendered = renderRequestBody(cfg, payload);
+    body = rendered.body;
+    if (!hasHeader(headers, "content-type")) {
+      headers["Content-Type"] = rendered.contentType;
+    }
+  }
 
   try {
     const res = await fetch(cfg.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-openwa-webhook-key": cfg.apiKey || "",
-      },
-      body: JSON.stringify(payload),
+      method,
+      headers,
+      body,
       signal: controller.signal,
     });
-    const body = await res.text().catch(() => "");
+    const responseBody = await res.text().catch(() => "");
     if (!res.ok) {
       const error = new Error(`Webhook returned HTTP ${res.status}`);
       error.responseStatus = res.status;
-      error.responseBody = body.slice(0, 2000);
+      error.responseBody = responseBody.slice(0, 2000);
       throw error;
     }
     return {
       responseStatus: res.status,
-      responseBody: body.slice(0, 2000),
+      responseBody: responseBody.slice(0, 2000),
     };
   } finally {
     clearTimeout(timeout);
@@ -162,15 +297,36 @@ function getBackoffMs(attempts) {
   return retryDelaysMs[index];
 }
 
-function payloadIds(payload = {}) {
+async function payloadIds(userId, payload = {}) {
+  if (payload.test) {
+    return { chatId: null, messageId: null };
+  }
+
+  const chatId = payload.chat?.id || payload.message?.chatId || null;
+  const messageId = payload.message?.id || null;
+  const [chat, message] = await Promise.all([
+    chatId
+      ? prisma.chat.findFirst({
+          where: { id: chatId, userId },
+          select: { id: true },
+        })
+      : null,
+    messageId
+      ? prisma.message.findFirst({
+          where: { id: messageId, chat: { userId } },
+          select: { id: true },
+        })
+      : null,
+  ]);
+
   return {
-    chatId: payload.chat?.id || payload.message?.chatId || null,
-    messageId: payload.message?.id || null,
+    chatId: chat?.id || null,
+    messageId: message?.id || null,
   };
 }
 
 async function createDeliveryLog(userId, cfg, payload) {
-  const ids = payloadIds(payload);
+  const ids = await payloadIds(userId, payload);
   return prisma.webhookDeliveryLog.create({
     data: {
       userId,
@@ -324,7 +480,7 @@ module.exports = {
 
   notifyWebhook: async (userId, payload) => {
     const cfg = module.exports.getWebhook(userId);
-    if (!cfg || !cfg.url) return null;
+    if (!cfg || !cfg.url || cfg.enabled === false) return null;
 
     const log = await createDeliveryLog(userId, cfg, payload);
     emitDeliveryUpdate(log);
