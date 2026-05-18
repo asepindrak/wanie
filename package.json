@@ -1,6 +1,6 @@
 {
   "name": "@adens/openwa",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Self-hosted WhatsApp and Telegram CRM gateway with multi-session messaging, AI auto-reply, knowledge base, REST API, webhooks, media support, real-time dashboard, and external agent integration.",
   "license": "MIT",
   "author": "asepindrak <asepindrakurniawan@gmail.com>",
