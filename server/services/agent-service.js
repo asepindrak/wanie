@@ -748,7 +748,7 @@ function resolveDirectAssistantToolCall(userMessage, ctx = {}) {
       trustedAuto: true,
       timeout: 15000,
     },
-    directSummary: `Saya menjalankan ${label} di ${OS_NAME_MAP[platform] || platform}.`,
+    directSummary: `I launched ${label} on ${OS_NAME_MAP[platform] || platform}.`,
   };
 }
 
@@ -998,11 +998,11 @@ function formatLlmErrorForUser(error) {
   console.error("[Assistant LLM Error]:", error);
 
   if (!message) {
-    return "Model AI sedang bermasalah. Coba kirim lagi beberapa saat lagi.";
+    return "The AI model is currently unavailable. Please try again in a moment.";
   }
 
   // Show detailed error message so user can understand if it's a context window or API limit issue
-  return `Model AI gagal memproses permintaan. Detail: ${message}`;
+  return `The AI model failed to process the request. Details: ${message}`;
 }
 
 function buildToolResultFallbackText(toolName, toolResult) {
@@ -2459,7 +2459,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
     const finalText =
       toolResult && toolResult.executed
         ? directToolCall.directSummary
-        : `Saya menyiapkan permintaan menjalankan aplikasi lokal. Request id: ${toolResult.id}`;
+        : `I prepared a request to launch the local application. Request id: ${toolResult.id}`;
 
     const assistantMsg = await chatService.storeIncomingMessage({
       userId,
@@ -2592,7 +2592,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
           userId,
           assistantSender,
           assistantDisplayName,
-          "Saya menghentikan proses karena model mengulang respons yang sama beberapa kali. Coba beri instruksi yang lebih spesifik atau pecah task menjadi langkah yang lebih kecil.",
+          "I stopped the process because the model repeated the same response several times. Please give more specific instructions or split the task into smaller steps.",
           io,
           chatId,
         );
@@ -2656,7 +2656,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
           userId,
           assistantSender,
           assistantDisplayName,
-          `Saya menghentikan proses karena tool \`${toolName}\` dipanggil berulang dengan input yang sama tanpa kemajuan. Coba ubah instruksi atau berikan detail target yang lebih spesifik.`,
+          `I stopped the process because the tool \`${toolName}\` was called repeatedly with the same input without progress. Please adjust the instruction or provide more specific target details.`,
           io,
           chatId,
         );
@@ -2672,7 +2672,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
             userId,
             assistantSender,
             assistantDisplayName,
-            "Saya berhenti karena beberapa langkah terakhir tidak menghasilkan tool yang valid. Coba ulangi dengan instruksi yang lebih spesifik.",
+            "I stopped because the last few steps did not produce a valid tool call. Please try again with more specific instructions.",
             io,
             chatId,
           );
@@ -2736,7 +2736,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
             userId,
             assistantSender,
             assistantDisplayName,
-            `Saya menghentikan proses karena tool \`${toolName}\` gagal berulang dengan error yang sama: ${err.message}`,
+            `I stopped the process because the tool \`${toolName}\` repeatedly failed with the same error: ${err.message}`,
             io,
             chatId,
           );
@@ -2753,7 +2753,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
         ) {
           conversationHistory.push({
             role: "user",
-            content: `Code agent gagal. Analisa prompt berikut dan buat perintah terminal yang paling relevan dan tepat untuk mencapai tujuan tersebut, lalu jalankan dengan run_terminal di cwd yang sama. Jangan gunakan perintah generik, pastikan sesuai kebutuhan prompt. Prompt: "${args.prompt}"`,
+            content: `The code agent failed. Analyze the following prompt, create the most relevant terminal command to accomplish it, then run it with run_terminal in the same cwd. Do not use a generic command; make sure it matches the prompt. Prompt: "${args.prompt}"`,
           });
         }
         continue;
@@ -2802,7 +2802,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
         userId,
         assistantSender,
         assistantDisplayName,
-        `Task mencapai batas ${maxTurns} langkah. Saya berhenti agar tidak berjalan tanpa akhir. Coba lanjutkan dengan instruksi lanjutan yang lebih spesifik dari hasil terakhir.`,
+        `The task reached the ${maxTurns}-step limit. I stopped it to avoid an endless run. Please continue with a more specific follow-up instruction based on the latest result.`,
         io,
         chatId,
       );
