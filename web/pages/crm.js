@@ -5,6 +5,8 @@ import {
   MdBolt,
   MdCheckCircle,
   MdDescription,
+  MdDelete,
+  MdDownload,
   MdGroups,
   MdInfo,
   MdRefresh,
@@ -13,11 +15,13 @@ import {
   MdSettings,
   MdSmartToy,
   MdUploadFile,
+  MdVisibility,
+  MdVisibilityOff,
 } from "react-icons/md";
 import { AppHead } from "@/components/AppHead";
 import { BrandLogo } from "@/components/BrandLogo";
 import { ChatChannelBadge } from "@/components/ChatChannelBadge";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getApiBaseUrl } from "@/lib/api";
 import { createSocket } from "@/lib/socket";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -171,6 +175,11 @@ export default function CrmPage() {
   const [knowledgeChatAnswer, setKnowledgeChatAnswer] = useState("");
   const [knowledgeChatSources, setKnowledgeChatSources] = useState([]);
   const [knowledgeChatLoading, setKnowledgeChatLoading] = useState(false);
+  const [knowledgeDocPreview, setKnowledgeDocPreview] = useState(null);
+  const [knowledgeDocPreviewLoadingId, setKnowledgeDocPreviewLoadingId] =
+    useState(null);
+  const [knowledgeDocDownloadingId, setKnowledgeDocDownloadingId] =
+    useState(null);
   const [personaInput, setPersonaInput] = useState("");
   const [personaGenerating, setPersonaGenerating] = useState(false);
   const [automationLogs, setAutomationLogs] = useState([]);
@@ -515,6 +524,9 @@ export default function CrmPage() {
     setError("");
     const previous = knowledgeDocs;
     setKnowledgeDocs((current) => current.filter((doc) => doc.id !== id));
+    if (knowledgeDocPreview?.document?.id === id) {
+      setKnowledgeDocPreview(null);
+    }
     try {
       await apiFetch(`/api/knowledge/documents/${id}`, {
         method: "DELETE",
@@ -537,10 +549,70 @@ export default function CrmPage() {
       setKnowledgeDocs((current) =>
         current.map((doc) => (doc.id === id ? data.document : doc)),
       );
+      if (knowledgeDocPreview?.document?.id === id) {
+        await viewKnowledgeDoc(id);
+      }
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       setReindexingDocId(null);
+    }
+  }
+
+  async function viewKnowledgeDoc(id) {
+    if (!id) return;
+    if (knowledgeDocPreview?.document?.id === id) {
+      setKnowledgeDocPreview(null);
+      return;
+    }
+
+    setKnowledgeDocPreviewLoadingId(id);
+    setError("");
+    try {
+      const data = await apiFetch(`/api/knowledge/documents/${id}/chunks`, {
+        token,
+      });
+      setKnowledgeDocPreview(data);
+    } catch (requestError) {
+      setKnowledgeDocPreview(null);
+      setError(requestError.message);
+    } finally {
+      setKnowledgeDocPreviewLoadingId(null);
+    }
+  }
+
+  async function downloadKnowledgeDoc(doc) {
+    if (!doc?.id || !token) return;
+
+    setKnowledgeDocDownloadingId(doc.id);
+    setError("");
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/api/knowledge/documents/${doc.id}/download`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || "Failed to download knowledge document.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = doc.originalName || doc.title || doc.fileName || "knowledge-document";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setKnowledgeDocDownloadingId(null);
     }
   }
 
@@ -1210,7 +1282,7 @@ export default function CrmPage() {
                       className="rounded-[18px] bg-[#242626] px-3 py-3"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-white">
                             {doc.originalName || doc.title || doc.fileName}
                           </p>
@@ -1227,22 +1299,97 @@ export default function CrmPage() {
                             </p>
                           ) : null}
                         </div>
-                        <button
-                          type="button"
-                          className="rounded-full bg-white/5 px-3 py-1.5 text-xs text-white/60"
-                          onClick={() => reindexKnowledgeDoc(doc.id)}
-                          disabled={reindexingDocId === doc.id}
-                        >
-                          {reindexingDocId === doc.id ? "Indexing" : "Reindex"}
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-full bg-white/5 px-3 py-1.5 text-xs text-white/60"
-                          onClick={() => removeKnowledgeDoc(doc.id)}
-                        >
-                          Remove
-                        </button>
+                        <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                          <button
+                            type="button"
+                            title={
+                              knowledgeDocPreview?.document?.id === doc.id
+                                ? "Hide document data"
+                                : "View document data"
+                            }
+                            aria-label={
+                              knowledgeDocPreview?.document?.id === doc.id
+                                ? "Hide document data"
+                                : "View document data"
+                            }
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+                            onClick={() => viewKnowledgeDoc(doc.id)}
+                            disabled={knowledgeDocPreviewLoadingId === doc.id}
+                          >
+                            {knowledgeDocPreview?.document?.id === doc.id ? (
+                              <MdVisibilityOff className="h-4 w-4" />
+                            ) : (
+                              <MdVisibility className="h-4 w-4" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            title="Download full document"
+                            aria-label="Download full document"
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+                            onClick={() => downloadKnowledgeDoc(doc)}
+                            disabled={knowledgeDocDownloadingId === doc.id}
+                          >
+                            <MdDownload className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            title="Reindex document"
+                            aria-label="Reindex document"
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+                            onClick={() => reindexKnowledgeDoc(doc.id)}
+                            disabled={reindexingDocId === doc.id}
+                          >
+                            <MdRefresh
+                              className={`h-4 w-4 ${
+                                reindexingDocId === doc.id ? "animate-spin" : ""
+                              }`}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            title="Remove document"
+                            aria-label="Remove document"
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10 text-red-100/70 transition hover:bg-red-500/20 hover:text-red-50"
+                            onClick={() => removeKnowledgeDoc(doc.id)}
+                          >
+                            <MdDelete className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
+                      {knowledgeDocPreview?.document?.id === doc.id ? (
+                        <div className="mt-3 rounded-[16px] bg-[#111b21] p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                              Document Data
+                            </p>
+                            <span className="text-[11px] text-white/35">
+                              {knowledgeDocPreview.chunks?.length || 0} chunks
+                            </span>
+                          </div>
+                          <div className="mt-3 max-h-80 space-y-3 overflow-y-auto pr-1">
+                            {(knowledgeDocPreview.chunks || []).map((chunk) => (
+                              <div
+                                key={chunk.id}
+                                className="rounded-[14px] bg-[#242626] p-3 text-xs leading-5"
+                              >
+                                <div className="mb-2 flex items-center justify-between gap-2 text-white/35">
+                                  <span>Chunk {chunk.chunkIndex + 1}</span>
+                                  <span>{chunk.tokenCount || 0} tokens</span>
+                                </div>
+                                <p className="whitespace-pre-wrap break-words text-white/70">
+                                  {chunk.content}
+                                </p>
+                              </div>
+                            ))}
+                            {!knowledgeDocPreview.chunks?.length ? (
+                              <div className="rounded-[14px] bg-[#242626] p-3 text-xs leading-5 text-white/45">
+                                No indexed chunks found for this document.
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
 

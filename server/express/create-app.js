@@ -1443,6 +1443,19 @@ Rules:
     }, 404),
   );
 
+  app.get(
+    "/api/knowledge/documents/:documentId/download",
+    requireAuth,
+    withAsync(async (req, res) => {
+      const download = await knowledgeService.getDocumentDownload(
+        req.user.id,
+        req.params.documentId,
+      );
+      res.type(download.mimeType);
+      res.download(download.filePath, download.fileName);
+    }, 404),
+  );
+
   app.delete(
     "/api/knowledge/documents/:documentId",
     requireAuth,

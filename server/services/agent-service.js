@@ -19,6 +19,8 @@ const authService = require("./auth-service");
 const webhookService = require("./webhook-service");
 const sessionService = require("./session-service");
 const crmService = require("./crm-service");
+const crmAutoReplyService = require("./crm-auto-reply-service");
+const knowledgeService = require("./knowledge-service");
 const terminalService = require("./terminal-service");
 const orchestrator = require("./agent-orchestrator");
 const toolExecutor = require("./tool-executor");
@@ -88,6 +90,72 @@ const OS_NAME_MAP = { win32: "Windows", darwin: "macOS", linux: "Linux" };
 const hostPlatform = process.platform || "unknown";
 const hostOS = OS_NAME_MAP[hostPlatform] || hostPlatform;
 
+const defaultToolLines = [
+  "- add_device: create a new WhatsApp session/device for the user. Use this only for WhatsApp device/session requests, QR pairing, or WhatsApp number connection. Never use this for Telegram.",
+  "- add_llm_provider: add an LLM provider (OpenAI/Anthropic/Ollama/OpenRouter).",
+  "- update_assistant: change assistant display name, avatar, or persona.",
+  "- create_api_key: generate an API key for the user.",
+  "- update_webhook: set incoming webhook URL and key.",
+  "- setup_gateway_integration: configure Wanie as an API gateway for an external CRM/ERP/app by setting webhook URL/key, optionally creating an API key, and turning internal CRM automation off.",
+  "- setup_telegram_bot: set up a Telegram bot to remote Wanie. Use this for any request that mentions Telegram, Telegram bot, BotFather, bot token, or admin Telegram IDs. User must provide a bot token from @BotFather. Do not create a WhatsApp device/session for Telegram setup.",
+  "- configure_telegram_admins: set the Telegram admin chat ID allowlist. Use this only for Telegram admin access control.",
+  "- get_telegram_bot_status: check whether the user's Telegram bot is configured and currently running.",
+  "- get_crm_auto_reply_settings: read CRM auto-reply settings, including assistantName, businessName, persona, agentInstructions, fallbackMessage, automation mode, and retrieval settings.",
+  "- update_crm_auto_reply_settings: update CRM auto-reply settings from chat. Use this for CRM auto-reply persona, CRM instruction/SOP, assistantName, businessName, fallbackMessage, and automation settings.",
+  "- list_knowledge_base: list CRM knowledge-base documents and their indexing status.",
+  "- get_knowledge_base_document: read one existing CRM knowledge-base document before editing it.",
+  "- search_knowledge_base: search CRM knowledge-base chunks and return the source chunks that would ground a reply.",
+  "- test_knowledge_base_reply: test the CRM knowledge-aware reply for a question and return the draft answer plus source chunks.",
+  "- add_knowledge_base: add a new text/Markdown knowledge-base document from chat. The document is automatically chunked and indexed.",
+  "- update_knowledge_base: replace or append text in an existing knowledge-base document from chat. The document is automatically chunked and indexed again.",
+  "- update_tools_md: update this file with new tools/skills provided by user.",
+];
+
+const defaultRoutingRules = [
+  "- If the user asks to set up, connect, configure, check, delete, or manage Telegram, use Telegram tools only.",
+  "- If the user asks to add/connect/pair a WhatsApp device or scan a WhatsApp QR code, use add_device.",
+  "- If the user asks to edit persona or instructions for CRM auto reply, auto-reply, knowledge-aware reply, customer support AI, or Wanie CRM Assistant, use update_crm_auto_reply_settings instead of update_assistant.",
+  "- Use update_assistant only for the Wanie Assistant chat profile itself, not CRM customer auto-reply behavior.",
+  "- For CRM auto-reply edits, keep changes literal and narrow. Do not invent policies, prices, guarantees, workflows, tone rules, or business facts. Prefer find/replace when changing one phrase in persona or agentInstructions.",
+  "- If the user asks what CRM knowledge exists, use list_knowledge_base.",
+  "- If the user asks to show, view, open, display, or lihat data inside a CRM knowledge-base document, use get_knowledge_base_document and include the document content in the reply.",
+  "- If the user asks to check, test, simulate, preview, or kira-kira what the CRM AI reply would be from the knowledge base, use test_knowledge_base_reply.",
+  "- If a tested knowledge-aware reply is wrong, inspect the returned sources, read the source document with get_knowledge_base_document, then update only the wrong sentence/section with update_knowledge_base according to the user's correction. Prefer find/replace. Do not rewrite the full document unless the user explicitly asks for a full rewrite.",
+  "- If the user asks to add knowledge-base content from chat, use add_knowledge_base.",
+  "- If the user asks to edit an existing knowledge-base document, use list_knowledge_base and get_knowledge_base_document first unless the user gave the exact document id and complete replacement content. Then use update_knowledge_base with a minimal targeted edit. Preserve existing wording, order, and unrelated facts.",
+  "- When the requested channel is ambiguous, ask one short clarification question instead of guessing.",
+];
+
+function hasToolLine(content, line) {
+  const toolName = String(line).match(/^-\s*([a-z0-9_]+)/i)?.[1];
+  if (!toolName) return content.includes(line);
+  return new RegExp(`(^|[^a-z0-9_])${toolName}([^a-z0-9_]|$)`, "i").test(
+    content,
+  );
+}
+
+function mergeMissingToolsContent(content) {
+  const text = String(content || "");
+  const missingTools = defaultToolLines.filter((line) => !hasToolLine(text, line));
+  const missingRules = defaultRoutingRules.filter((line) => !text.includes(line));
+
+  if (!missingTools.length && !missingRules.length) return text;
+
+  const sections = [];
+  if (missingTools.length) {
+    sections.push(
+      ["Default skills added by this Wanie version:", ...missingTools].join("\n"),
+    );
+  }
+  if (missingRules.length) {
+    sections.push(
+      ["Routing rules added by this Wanie version:", ...missingRules].join("\n"),
+    );
+  }
+
+  return `${text.trimEnd()}\n\n${sections.join("\n\n")}\n`;
+}
+
 function ensureToolsFile() {
   // ensure runtime dirs exist before writing into the user data dir
   try {
@@ -102,26 +170,26 @@ function ensureToolsFile() {
 This file documents tools and skills available to the Wanie Assistant.
 
 Default skills:
-- add_device: create a new WhatsApp session/device for the user. Use this only for WhatsApp device/session requests, QR pairing, or WhatsApp number connection. Never use this for Telegram.
-- add_llm_provider: add an LLM provider (OpenAI/Anthropic/Ollama/OpenRouter).
-- update_assistant: change assistant display name, avatar, or persona.
-- create_api_key: generate an API key for the user.
-- update_webhook: set incoming webhook URL and key.
-- setup_gateway_integration: configure Wanie as an API gateway for an external CRM/ERP/app by setting webhook URL/key, optionally creating an API key, and turning internal CRM automation off.
-- setup_telegram_bot: set up a Telegram bot to remote Wanie. Use this for any request that mentions Telegram, Telegram bot, BotFather, bot token, or admin Telegram IDs. User must provide a bot token from @BotFather. Do not create a WhatsApp device/session for Telegram setup.
-- configure_telegram_admins: set the Telegram admin chat ID allowlist. Use this only for Telegram admin access control.
-- get_telegram_bot_status: check whether the user's Telegram bot is configured and currently running.
-- update_tools_md: update this file with new tools/skills provided by user.
+${defaultToolLines.join("\n")}
 
 The assistant may append new tool descriptions here when the user provides external tool documentation.
 
 Routing rules:
-- If the user asks to set up, connect, configure, check, delete, or manage Telegram, use Telegram tools only.
-- If the user asks to add/connect/pair a WhatsApp device or scan a WhatsApp QR code, use add_device.
-- When the requested channel is ambiguous, ask one short clarification question instead of guessing.
+${defaultRoutingRules.join("\n")}
 `;
 
     fs.writeFileSync(TOOLS_PATH, defaultContent, "utf8");
+    return;
+  }
+
+  try {
+    const current = fs.readFileSync(TOOLS_PATH, "utf8");
+    const merged = mergeMissingToolsContent(current);
+    if (merged !== current) {
+      fs.writeFileSync(TOOLS_PATH, merged, "utf8");
+    }
+  } catch (e) {
+    // ignore
   }
 }
 
@@ -688,6 +756,7 @@ function buildAssistantSystemPrompt({
   assistantExternalId,
   assistantPersona,
   toolsText,
+  knowledgeDocumentsText,
   openapiText,
   identityText,
   clientPlatform,
@@ -777,8 +846,22 @@ function buildAssistantSystemPrompt({
   parts.push(
     "9. API Gateway Setup: If the user wants Wanie to integrate with an external CRM, ERP, helpdesk, or app as a messaging gateway, ask for the external webhook URL and shared webhook secret if missing. Use `setup_gateway_integration` to set the webhook, create an API key for the external app, and turn internal CRM automation off. Tell the user the returned API key secret is shown only once and must be saved in the external app.",
   );
+  parts.push(
+    "10. CRM Auto-Reply Settings: If the user asks to edit persona, brand voice, SOP, instruction, fallback message, assistant name, business name, or automation behavior for CRM auto-reply/customer replies/knowledge-aware replies, use `update_crm_auto_reply_settings`. Use `get_crm_auto_reply_settings` first when the user asks to inspect current CRM auto-reply behavior. Do not use `update_assistant` for CRM auto-reply settings; `update_assistant` only changes this chat assistant profile.",
+  );
+  parts.push(
+    "CRM auto-reply setting edits must be literal and narrow. Do not invent policies, prices, guarantees, workflows, tone rules, or business facts. If the user asks for a small change, preserve the existing setting text and only change the requested phrase/sentence. If the user gives a complete replacement, use it as-is except for trimming whitespace.",
+  );
+  parts.push(
+    "11. CRM Knowledge Base: You can manage CRM knowledge directly from chat. Use `list_knowledge_base` when the user asks what knowledge exists. If the user asks to show, view, open, display, or lihat the data/content of a knowledge document, use `get_knowledge_base_document` and include the document content in your reply. If the user asks to check, test, simulate, preview, or kira-kira what the CRM AI would reply from the knowledge base, use `test_knowledge_base_reply`; explain the answer and source chunks. If the tested reply is wrong, inspect the returned sources, read the wrong source document, and use `update_knowledge_base` to fix it according to the user's correction. Before editing an existing document, use `get_knowledge_base_document` unless the user explicitly provides the complete replacement content. Use `add_knowledge_base` for new knowledge and `update_knowledge_base` for edits; both automatically chunk and index the document.",
+  );
+  parts.push(
+    "Knowledge-base edits must be minimal. Do not summarize, restructure, translate, expand, or add new sections unless the user explicitly asks. Preserve all unrelated lines exactly as much as possible. For a correction like 'harga premium harusnya 250 ribu', change only the matching wrong price/fact in the existing document. If no matching fact exists, append only one concise line containing the user's provided fact.",
+  );
   parts.push("");
   parts.push(`Available tools: ${toolsList}.`);
+  parts.push("");
+  parts.push(`Current CRM knowledge-base documents:\n${knowledgeDocumentsText}`);
   parts.push("");
   parts.push(`TOOLS.md:\n${toolsText}`);
   parts.push("");
@@ -987,6 +1070,21 @@ function getTerminalCommandForTool(toolName, args, toolResult) {
   }
 
   return null;
+}
+
+function formatKnowledgeDocumentsForPrompt(documents = []) {
+  if (!documents.length) {
+    return "- No knowledge-base documents yet.";
+  }
+
+  return documents
+    .map((document) => {
+      const name = document.originalName || document.title || document.fileName;
+      const chunks = Number(document.chunkCount || 0);
+      const status = document.status || "unknown";
+      return `- ${name} (id: ${document.id}, status: ${status}, chunks: ${chunks})`;
+    })
+    .join("\n");
 }
 
 const tools = {
@@ -1291,6 +1389,116 @@ const tools = {
     });
     return { ok: true, assistant: updated };
   },
+  get_crm_auto_reply_settings: async (userId) => {
+    const settings = await crmService.getSettings(userId);
+    return {
+      ok: true,
+      settings: {
+        defaultMode: settings.defaultMode,
+        assistantName: settings.assistantName,
+        businessName: settings.businessName,
+        persona: settings.persona,
+        agentInstructions: settings.agentInstructions,
+        fallbackMessage: settings.fallbackMessage,
+        similarityThreshold: settings.similarityThreshold,
+        maxChunks: settings.maxChunks,
+        cooldownSeconds: settings.cooldownSeconds,
+        adminPauseSeconds: settings.adminPauseSeconds,
+        maxAutoRepliesPerChatPerDay: settings.maxAutoRepliesPerChatPerDay,
+      },
+    };
+  },
+  update_crm_auto_reply_settings: async (userId, args = {}) => {
+    const allowedKeys = [
+      "defaultMode",
+      "assistantName",
+      "businessName",
+      "persona",
+      "agentInstructions",
+      "fallbackMessage",
+      "similarityThreshold",
+      "maxChunks",
+      "cooldownSeconds",
+      "adminPauseSeconds",
+      "maxAutoRepliesPerChatPerDay",
+    ];
+    const patch = {};
+
+    for (const key of allowedKeys) {
+      if (args[key] !== undefined) {
+        patch[key] = args[key];
+      }
+    }
+
+    if (args.instructions !== undefined && patch.agentInstructions === undefined) {
+      patch.agentInstructions = args.instructions;
+    }
+    if (args.instruction !== undefined && patch.agentInstructions === undefined) {
+      patch.agentInstructions = args.instruction;
+    }
+    if (args.sop !== undefined && patch.agentInstructions === undefined) {
+      patch.agentInstructions = args.sop;
+    }
+
+    const currentSettings =
+      args.find || args.findText || args.oldText
+        ? await crmService.getSettings(userId)
+        : null;
+    const patchTarget = String(
+      args.patchTarget || args.target || args.field || "",
+    ).trim();
+    const findText = String(args.find || args.findText || args.oldText || "");
+    const replaceText = String(
+      args.replace || args.replaceText || args.newText || "",
+    );
+    if (findText && replaceText) {
+      const target =
+        patchTarget === "persona" || patchTarget === "agentInstructions"
+          ? patchTarget
+          : String(currentSettings?.agentInstructions || "").includes(findText)
+            ? "agentInstructions"
+            : String(currentSettings?.persona || "").includes(findText)
+              ? "persona"
+              : null;
+
+      if (!target) {
+        throw new Error(
+          "find text was not found in CRM persona or agentInstructions.",
+        );
+      }
+
+      patch[target] = String(currentSettings[target] || "").replace(
+        findText,
+        replaceText,
+      );
+    }
+
+    if (!Object.keys(patch).length) {
+      throw new Error(
+        "At least one CRM auto-reply setting is required. Use persona and/or agentInstructions for the requested change.",
+      );
+    }
+
+    const settings = await crmService.updateSettings(userId, patch);
+    return {
+      ok: true,
+      updated: patch,
+      settings: {
+        defaultMode: settings.defaultMode,
+        assistantName: settings.assistantName,
+        businessName: settings.businessName,
+        persona: settings.persona,
+        agentInstructions: settings.agentInstructions,
+        fallbackMessage: settings.fallbackMessage,
+        similarityThreshold: settings.similarityThreshold,
+        maxChunks: settings.maxChunks,
+        cooldownSeconds: settings.cooldownSeconds,
+        adminPauseSeconds: settings.adminPauseSeconds,
+        maxAutoRepliesPerChatPerDay: settings.maxAutoRepliesPerChatPerDay,
+      },
+      message: "CRM auto-reply settings updated.",
+    };
+  },
   create_api_key: async (userId, args) => {
     const name = String(args.name || `agent-${Date.now()}`);
     const result = await apiKeyService.createApiKey(userId, { name });
@@ -1503,6 +1711,115 @@ const tools = {
             }
           : null,
       })),
+    };
+  },
+  list_knowledge_base: async (userId) => {
+    const documents = await knowledgeService.listDocuments(userId);
+    return {
+      ok: true,
+      count: documents.length,
+      documents,
+    };
+  },
+  get_knowledge_base_document: async (userId, args = {}) => {
+    const result = await knowledgeService.getDocumentText(userId, args);
+    return {
+      ok: true,
+      ...result,
+    };
+  },
+  search_knowledge_base: async (userId, args = {}) => {
+    const query = String(args.query || args.q || args.question || "").trim();
+    if (!query) throw new Error("query is required.");
+
+    const results = await knowledgeService.searchChunks(userId, query, {
+      limit: args.limit,
+    });
+    return {
+      ok: true,
+      query,
+      count: results.length,
+      results,
+    };
+  },
+  test_knowledge_base_reply: async (userId, args = {}) => {
+    const question = String(args.question || args.query || args.q || "").trim();
+    if (!question) throw new Error("question is required.");
+
+    const result = await crmAutoReplyService.testKnowledgeChat(
+      userId,
+      question,
+    );
+    return {
+      ok: true,
+      question,
+      answer: result.answer,
+      sources: result.sources || [],
+    };
+  },
+  add_knowledge_base: async (userId, args = {}) => {
+    const content = String(args.content || args.text || "").trim();
+    if (!content) throw new Error("content is required.");
+
+    const document = await knowledgeService.createDocumentFromText(userId, {
+      title: args.title,
+      originalName: args.originalName || args.fileName,
+      content,
+    });
+
+    return {
+      ok: true,
+      document,
+      message:
+        "Knowledge-base document added, chunked, and indexed automatically.",
+    };
+  },
+  update_knowledge_base: async (userId, args = {}) => {
+    const content = String(args.content || args.text || "").trim();
+    const findText = String(args.find || args.findText || args.oldText || "");
+    const replaceText = String(
+      args.replace || args.replaceText || args.newText || "",
+    );
+    if (!content && !(findText && replaceText)) {
+      throw new Error("content is required.");
+    }
+    const requestedMode = String(args.mode || "").toLowerCase();
+    const completeReplacement = Boolean(
+      args.completeReplacement || args.replaceFull || args.fullRewrite,
+    );
+    if (
+      content &&
+      !findText &&
+      requestedMode !== "append" &&
+      !completeReplacement
+    ) {
+      throw new Error(
+        "Use find/replace for targeted knowledge edits, or set mode:'append' for a small addition. Full replacement requires completeReplacement:true.",
+      );
+    }
+
+    const document = await knowledgeService.updateDocumentFromText(
+      userId,
+      {
+        documentId: args.documentId || args.id,
+        title: args.matchTitle || args.currentTitle || args.name,
+        originalName: args.originalName || args.fileName || args.currentFileName,
+      },
+      {
+        title: args.newTitle || args.title,
+        originalName: args.newOriginalName || args.newFileName,
+        content,
+        find: findText,
+        replace: replaceText,
+        mode: args.mode || (findText ? "patch" : "replace"),
+      },
+    );
+
+    return {
+      ok: true,
+      document,
+      message:
+        "Knowledge-base document updated, chunked, and indexed automatically.",
     };
   },
   register_tool: async (userId, args) => {
@@ -2047,6 +2364,13 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
 
   const toolsText = await readToolsFile();
   const identityText = await readIdentityFile();
+  let knowledgeDocumentsText = "- Unable to load knowledge-base documents.";
+  try {
+    const knowledgeDocuments = await knowledgeService.listDocuments(userId);
+    knowledgeDocumentsText = formatKnowledgeDocumentsForPrompt(knowledgeDocuments);
+  } catch (e) {
+    knowledgeDocumentsText = `- Failed to load knowledge-base documents: ${e.message}`;
+  }
   let openapiText = "";
   try {
     const openapiModule = require("../express/openapi");
@@ -2065,6 +2389,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
     assistantPersona:
       chatSummary && chatSummary.contact ? chatSummary.contact.persona : null,
     toolsText,
+    knowledgeDocumentsText,
     openapiText,
     identityText,
     clientPlatform,

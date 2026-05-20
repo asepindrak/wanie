@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { prisma } = require("../database/client");
 const { knowledgeDir } = require("../utils/paths");
 const crmService = require("./crm-service");
@@ -211,6 +212,27 @@ function shouldPreferCsv(queryTerms) {
 
 function readPlainText(filePath) {
   return fs.readFileSync(filePath, "utf8");
+}
+
+function normalizeKnowledgeFileName(value, fallback = "knowledge.md") {
+  const raw = sanitizeUnicodeText(value || fallback)
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  const name = raw || fallback;
+  return path.extname(name) ? name : `${name}.md`;
+}
+
+function resolveKnowledgeFilePath(document) {
+  const filePath = path.resolve(knowledgeDir, document.relativePath || "");
+  const knowledgeRoot = path.resolve(knowledgeDir);
+  if (
+    !filePath.startsWith(`${knowledgeRoot}${path.sep}`) ||
+    !fs.existsSync(filePath)
+  ) {
+    throw new Error("Stored knowledge file is missing.");
+  }
+  return filePath;
 }
 
 async function extractPdfText(filePath) {
@@ -514,6 +536,254 @@ async function createDocumentFromUpload(userId, file) {
   return sanitizeDocument(updated);
 }
 
+async function indexTextForDocument(userId, document, text, metadata = {}) {
+  const normalizedText = normalizeText(text);
+  const chunks = chunkText(normalizedText);
+
+  if (!chunks.length) {
+    await retryOnSqliteTimeout(() =>
+      prisma.$transaction([
+        prisma.knowledgeChunk.deleteMany({
+          where: { userId, documentId: document.id },
+        }),
+        prisma.knowledgeDocument.update({
+          where: { id: document.id },
+          data: {
+            status: "failed",
+            error: "No extractable text found.",
+            textLength: normalizedText.length,
+          },
+        }),
+      ]),
+    );
+    return;
+  }
+
+  const settings = await crmService.getSettings(userId);
+  const embeddedChunks = await embeddingService
+    .embedTexts(userId, chunks, { settings })
+    .catch(() => []);
+
+  await retryOnSqliteTimeout(() =>
+    prisma.$transaction([
+      prisma.knowledgeChunk.deleteMany({
+        where: { userId, documentId: document.id },
+      }),
+      prisma.knowledgeChunk.createMany({
+        data: chunks.map((content, chunkIndex) => ({
+          userId,
+          documentId: document.id,
+          content,
+          embedding: embeddedChunks[chunkIndex]?.embedding || undefined,
+          embeddingModel: embeddedChunks[chunkIndex]?.model || null,
+          chunkIndex,
+          tokenCount: Math.ceil(content.length / 4),
+          metadata: {
+            fileName: sanitizeUnicodeText(document.originalName || document.fileName),
+            mimeType: document.mimeType || null,
+            ...metadata,
+          },
+        })),
+      }),
+      prisma.knowledgeDocument.update({
+        where: { id: document.id },
+        data: {
+          status: "ready",
+          error: null,
+          textLength: normalizedText.length,
+          size: Buffer.byteLength(normalizedText, "utf8"),
+        },
+      }),
+    ]),
+  );
+}
+
+async function createDocumentFromText(userId, payload = {}) {
+  const content = sanitizeUnicodeText(payload.content || payload.text || "");
+  if (!content.trim()) throw new Error("content is required.");
+
+  const originalName = normalizeKnowledgeFileName(
+    payload.originalName || payload.fileName || payload.title,
+  );
+  const title = sanitizeUnicodeText(payload.title || originalName);
+
+  await replaceExistingDocumentByOriginalName(userId, originalName);
+
+  const fileName = `${crypto.randomUUID()}${path.extname(originalName) || ".md"}`;
+  const filePath = path.join(knowledgeDir, fileName);
+  const normalizedContent = normalizeText(content);
+  fs.writeFileSync(filePath, normalizedContent, "utf8");
+
+  const document = await retryOnSqliteTimeout(() =>
+    prisma.knowledgeDocument.create({
+      data: {
+        userId,
+        title,
+        fileName,
+        originalName,
+        mimeType: "text/markdown",
+        size: Buffer.byteLength(normalizedContent, "utf8"),
+        relativePath: path.relative(knowledgeDir, filePath),
+        status: "processing",
+      },
+    }),
+  );
+
+  await indexTextForDocument(userId, document, normalizedContent, {
+    source: "assistant_chat",
+  });
+
+  const updated = await retryOnSqliteTimeout(() =>
+    prisma.knowledgeDocument.findUnique({
+      where: { id: document.id },
+      include: { _count: { select: { chunks: true } } },
+    }),
+  );
+  return sanitizeDocument(updated);
+}
+
+async function findDocumentForEdit(userId, selector = {}) {
+  const documentId = String(selector.documentId || selector.id || "").trim();
+  if (documentId) {
+    return retryOnSqliteTimeout(() =>
+      prisma.knowledgeDocument.findFirst({ where: { id: documentId, userId } }),
+    );
+  }
+
+  const name = sanitizeUnicodeText(
+    selector.originalName || selector.fileName || selector.title || selector.name || "",
+  );
+  if (!name) return null;
+
+  const exact = await retryOnSqliteTimeout(() =>
+    prisma.knowledgeDocument.findFirst({
+      where: {
+        userId,
+        OR: [{ originalName: name }, { title: name }, { fileName: name }],
+      },
+      orderBy: { updatedAt: "desc" },
+    }),
+  );
+  if (exact) return exact;
+
+  const documents = await retryOnSqliteTimeout(() =>
+    prisma.knowledgeDocument.findMany({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+    }),
+  );
+  const needle = name.toLowerCase();
+  return (
+    documents.find((document) =>
+      [document.originalName, document.title, document.fileName]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle)),
+    ) || null
+  );
+}
+
+async function getDocumentText(userId, selector = {}) {
+  const document = await findDocumentForEdit(userId, selector);
+  if (!document) throw new Error("Knowledge document not found.");
+  const filePath = resolveKnowledgeFilePath(document);
+  const content = await extractText({
+    path: filePath,
+    filename: document.fileName,
+    originalname: document.originalName || document.fileName,
+    mimetype: document.mimeType || "application/octet-stream",
+    size: document.size || 0,
+  });
+
+  return {
+    document: sanitizeDocument(document),
+    content: normalizeText(content),
+  };
+}
+
+async function getDocumentDownload(userId, documentId) {
+  const document = await retryOnSqliteTimeout(() =>
+    prisma.knowledgeDocument.findFirst({ where: { id: documentId, userId } }),
+  );
+  if (!document) throw new Error("Knowledge document not found.");
+
+  return {
+    document: sanitizeDocument(document),
+    filePath: resolveKnowledgeFilePath(document),
+    fileName: document.originalName || document.fileName || "knowledge-document",
+    mimeType: document.mimeType || "application/octet-stream",
+  };
+}
+
+async function updateDocumentFromText(userId, selector = {}, payload = {}) {
+  const document = await findDocumentForEdit(userId, selector);
+  if (!document) throw new Error("Knowledge document not found.");
+
+  const findText = sanitizeUnicodeText(
+    payload.find || payload.findText || payload.oldText || "",
+  );
+  const replaceText = sanitizeUnicodeText(
+    payload.replace || payload.replaceText || payload.newText || "",
+  );
+  const nextContent = sanitizeUnicodeText(payload.content || payload.text || "");
+  if (!nextContent.trim() && !(findText && replaceText)) {
+    throw new Error("content is required.");
+  }
+
+  const mode = String(payload.mode || "replace").toLowerCase();
+  const needsCurrent = mode === "append" || mode === "patch" || findText;
+  const current = needsCurrent
+    ? await getDocumentText(userId, { id: document.id })
+    : null;
+  let normalizedContent;
+
+  if (findText) {
+    const currentContent = current.content || "";
+    if (!currentContent.includes(findText)) {
+      throw new Error("find text was not found in the knowledge document.");
+    }
+    normalizedContent = normalizeText(currentContent.replace(findText, replaceText));
+  } else if (mode === "append") {
+    normalizedContent = normalizeText(`${current.content}\n\n${nextContent}`);
+  } else {
+    normalizedContent = normalizeText(nextContent);
+  }
+
+  const filePath = resolveKnowledgeFilePath(document);
+  fs.writeFileSync(filePath, normalizedContent, "utf8");
+
+  const title = payload.title ? sanitizeUnicodeText(payload.title) : document.title;
+  const originalName = payload.originalName
+    ? normalizeKnowledgeFileName(payload.originalName)
+    : document.originalName;
+
+  const updatedDocument = await retryOnSqliteTimeout(() =>
+    prisma.knowledgeDocument.update({
+      where: { id: document.id },
+      data: {
+        title,
+        originalName,
+        mimeType: "text/markdown",
+        status: "processing",
+        error: null,
+        size: Buffer.byteLength(normalizedContent, "utf8"),
+      },
+    }),
+  );
+
+  await indexTextForDocument(userId, updatedDocument, normalizedContent, {
+    source: "assistant_chat",
+    editMode: mode,
+  });
+
+  const result = await retryOnSqliteTimeout(() =>
+    prisma.knowledgeDocument.findUnique({
+      where: { id: document.id },
+      include: { _count: { select: { chunks: true } } },
+    }),
+  );
+  return sanitizeDocument(result);
+}
+
 async function replaceExistingDocumentByOriginalName(userId, originalName) {
   const normalizedName = sanitizeUnicodeText(originalName);
   if (!normalizedName) return [];
@@ -591,14 +861,7 @@ async function createDocumentsFromUploads(userId, files = []) {
 }
 
 async function indexDocumentFromStoredFile(userId, document) {
-  const filePath = path.resolve(knowledgeDir, document.relativePath || "");
-  const knowledgeRoot = path.resolve(knowledgeDir);
-  if (
-    !filePath.startsWith(`${knowledgeRoot}${path.sep}`) ||
-    !fs.existsSync(filePath)
-  ) {
-    throw new Error("Stored knowledge file is missing.");
-  }
+  const filePath = resolveKnowledgeFilePath(document);
 
   const file = {
     path: filePath,
@@ -713,6 +976,10 @@ module.exports = {
   deleteDocument,
   reindexDocument,
   searchChunks,
+  createDocumentFromText,
+  updateDocumentFromText,
+  getDocumentText,
+  getDocumentDownload,
   chunkText,
   extractText,
 };

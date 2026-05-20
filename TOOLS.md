@@ -21,6 +21,25 @@ Default skills
 - `get_webpage` — Fetch and read the content of a URL (static or dynamic).
 - `open_browser` — Open a browser to read a URL, useful for JavaScript-heavy sites.
 - `list_workspaces` — List all project folders inside the global workspaces directory.
+- `get_crm_auto_reply_settings` — Read CRM auto-reply settings, including assistant name, business name, persona, instruction/SOP, fallback message, automation mode, and retrieval settings.
+- `update_crm_auto_reply_settings` — Update CRM auto-reply settings from chat, including persona and `agentInstructions`.
+- `list_knowledge_base` — List CRM knowledge-base documents and indexing status.
+- `get_knowledge_base_document` — Read an existing CRM knowledge-base document before editing.
+- `search_knowledge_base` — Search CRM knowledge-base chunks and return the source chunks that would ground a reply.
+- `test_knowledge_base_reply` — Test the CRM knowledge-aware reply for a question and return the draft answer plus source chunks.
+- `add_knowledge_base` — Add a text or Markdown knowledge-base document from chat, then automatically chunk and index it.
+- `update_knowledge_base` — Replace or append content in an existing knowledge-base document from chat, then automatically chunk and index it again.
+
+Knowledge-base routing:
+- Use `update_crm_auto_reply_settings` when the user asks to edit persona, instruction, SOP, fallback message, assistant name, business name, or behavior for CRM auto-reply/customer support replies.
+- Use `update_assistant` only for the Wanie Assistant chat profile itself, not CRM customer auto-reply behavior.
+- For CRM auto-reply edits, keep changes literal and narrow. Do not invent policies, prices, guarantees, workflows, tone rules, or business facts. Prefer find/replace when changing one phrase in `persona` or `agentInstructions`.
+- Use `list_knowledge_base` when the user asks what CRM knowledge exists.
+- Use `get_knowledge_base_document` when the user asks to show, view, open, display, or lihat the data/content of a knowledge document.
+- Use `test_knowledge_base_reply` when the user asks to check, test, simulate, preview, or kira-kira what the CRM AI reply would be from the knowledge base.
+- If the tested reply is wrong, inspect the returned sources, read the source document, then update only the wrong sentence/section according to the user's correction. Prefer find/replace. Do not rewrite the full document unless the user explicitly asks.
+- Use `add_knowledge_base` for new knowledge-base content from chat.
+- Use `update_knowledge_base` for edits after identifying the target document.
 
 Detailed examples for commonly-used tools
 

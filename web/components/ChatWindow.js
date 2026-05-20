@@ -619,6 +619,12 @@ export const ChatWindow = forwardRef(function ChatWindow(
       icon: "📱",
     },
     {
+      label: "Knowledge Base",
+      message:
+        "Show my CRM knowledge base list, then help me add a new knowledge base entry or edit an existing one.",
+      icon: "📚",
+    },
+    {
       label: "Integrate Telegram",
       message: "How can I remote Wanie via Telegram?",
       icon: "🤖",
