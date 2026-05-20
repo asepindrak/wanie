@@ -1088,6 +1088,22 @@ function formatKnowledgeDocumentsForPrompt(documents = []) {
     .join("\n");
 }
 
+function stableStringify(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value !== "object") return String(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${key}:${stableStringify(value[key])}`)
+    .join(",")}}`;
+}
+
+function shortLoopSignature(value, maxLength = 700) {
+  return stableStringify(value).slice(0, maxLength);
+}
+
 const tools = {
   add_device: async (userId, args, ctx) => {
     const name = String(args.name || "").trim();
@@ -2459,7 +2475,11 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
 
   // --- Start Autonomous Loop ---
   let turn = 0;
-  const maxTurns = 10;
+  const maxTurns = 40;
+  const repeatedToolCalls = new Map();
+  const repeatedToolErrors = new Map();
+  const repeatedModelResponses = new Map();
+  let consecutiveNoProgressTurns = 0;
   const conversationHistory = [];
 
   // Initialize history with system prompt
@@ -2563,6 +2583,22 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
         return;
       }
 
+      const responseSignature = shortLoopSignature(text);
+      const responseCount =
+        (repeatedModelResponses.get(responseSignature) || 0) + 1;
+      repeatedModelResponses.set(responseSignature, responseCount);
+      if (responseCount >= 3) {
+        await sendAssistantMessage(
+          userId,
+          assistantSender,
+          assistantDisplayName,
+          "Saya menghentikan proses karena model mengulang respons yang sama beberapa kali. Coba beri instruksi yang lebih spesifik atau pecah task menjadi langkah yang lebih kecil.",
+          io,
+          chatId,
+        );
+        return;
+      }
+
       // Add assistant turn to history
       conversationHistory.push({ role: "assistant", content: text });
 
@@ -2611,10 +2647,37 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
 
       const toolName = String(maybe.tool || "");
       const args = maybe.args || {};
+      const toolCallSignature = `${toolName}:${shortLoopSignature(args)}`;
+      const toolCallCount =
+        (repeatedToolCalls.get(toolCallSignature) || 0) + 1;
+      repeatedToolCalls.set(toolCallSignature, toolCallCount);
+      if (toolCallCount >= 4) {
+        await sendAssistantMessage(
+          userId,
+          assistantSender,
+          assistantDisplayName,
+          `Saya menghentikan proses karena tool \`${toolName}\` dipanggil berulang dengan input yang sama tanpa kemajuan. Coba ubah instruksi atau berikan detail target yang lebih spesifik.`,
+          io,
+          chatId,
+        );
+        return;
+      }
 
       if (!tools[toolName]) {
         const errMsg = `Requested tool not found: ${toolName}`;
         conversationHistory.push({ role: "user", content: errMsg });
+        consecutiveNoProgressTurns += 1;
+        if (consecutiveNoProgressTurns >= 5) {
+          await sendAssistantMessage(
+            userId,
+            assistantSender,
+            assistantDisplayName,
+            "Saya berhenti karena beberapa langkah terakhir tidak menghasilkan tool yang valid. Coba ulangi dengan instruksi yang lebih spesifik.",
+            io,
+            chatId,
+          );
+          return;
+        }
         continue;
       }
 
@@ -2663,7 +2726,22 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
         }
       } catch (err) {
         const assistErr = `Tool error: ${err.message}`;
+        const errorSignature = `${toolName}:${shortLoopSignature(args)}:${String(err.message || "").slice(0, 300)}`;
+        const errorCount = (repeatedToolErrors.get(errorSignature) || 0) + 1;
+        repeatedToolErrors.set(errorSignature, errorCount);
         conversationHistory.push({ role: "user", content: assistErr });
+        consecutiveNoProgressTurns += 1;
+        if (errorCount >= 3 || consecutiveNoProgressTurns >= 6) {
+          await sendAssistantMessage(
+            userId,
+            assistantSender,
+            assistantDisplayName,
+            `Saya menghentikan proses karena tool \`${toolName}\` gagal berulang dengan error yang sama: ${err.message}`,
+            io,
+            chatId,
+          );
+          return;
+        }
         // Fallback: if code agent fails, try run_terminal if prompt is present
         if (
           toolName === "run_code_agent" &&
@@ -2680,6 +2758,8 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
         }
         continue;
       }
+
+      consecutiveNoProgressTurns = 0;
 
       // Special case: terminal commands (async approval)
       const terminalCommand = getTerminalCommandForTool(
@@ -2722,7 +2802,7 @@ async function handleAssistantMessage(userId, chatId, input, ctx = {}) {
         userId,
         assistantSender,
         assistantDisplayName,
-        "Task exceeds maximum turns limit.",
+        `Task mencapai batas ${maxTurns} langkah. Saya berhenti agar tidak berjalan tanpa akhir. Coba lanjutkan dengan instruksi lanjutan yang lebih spesifik dari hasil terakhir.`,
         io,
         chatId,
       );
