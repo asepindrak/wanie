@@ -534,6 +534,8 @@ function embeddingArray(value) {
 async function searchChunks(userId, query, options = {}) {
   const queryTerms = [...new Set(tokenize(query))];
   if (!queryTerms.length) return [];
+  const intentQuery = String(options.intentQuery || query || "");
+  const intentQueryTerms = [...new Set(tokenize(intentQuery))];
 
   const settings = options.settings || (await crmService.getSettings(userId));
   const take = Math.max(
@@ -565,7 +567,7 @@ async function searchChunks(userId, query, options = {}) {
 
   const intentResults = chunks
     .map((chunk) => {
-      const boost = imageIntentBoost(queryTerms, query, chunk);
+      const boost = imageIntentBoost(intentQueryTerms, intentQuery, chunk);
       if (!boost) return null;
       return {
         id: chunk.id,

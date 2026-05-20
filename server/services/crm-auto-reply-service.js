@@ -390,6 +390,13 @@ function imageKnowledgeSources(sources = []) {
   }).slice(0, 1);
 }
 
+function latestMessageAllowsImageAttachment(text) {
+  const normalized = String(text || "").toLowerCase();
+  return /\b(qris|qr|bayar|pembayaran|payment|transfer|rekening|metode\s+bayar|metode\s+pembayaran|price|pricelist|harga|tarif|biaya|paket|rate|rates|berapa|menu|katalog|catalog|brosur|brochure|gambar|image|foto|photo)\b/i.test(
+    normalized,
+  );
+}
+
 async function createMediaFileFromKnowledgeSource(userId, source) {
   const relativePath = String(source?.metadata?.relativePath || "")
     .replace(/\\/g, "/")
@@ -590,6 +597,7 @@ async function generateDraft(userId, chatId, { inboundMessage } = {}) {
 
   const snippets = await knowledgeService.searchChunks(userId, knowledgeQuery, {
     limit: settings.maxChunks,
+    intentQuery: lastInboundText,
   });
   const prompt = buildPrompt({
     chat,
@@ -615,7 +623,9 @@ async function generateDraft(userId, chatId, { inboundMessage } = {}) {
   return {
     draft: sanitizeCustomerReply(result?.text || settings.fallbackMessage),
     sources: snippets,
-    mediaSources: imageKnowledgeSources(snippets),
+    mediaSources: latestMessageAllowsImageAttachment(lastInboundText)
+      ? imageKnowledgeSources(snippets)
+      : [],
   };
 }
 
