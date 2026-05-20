@@ -1125,11 +1125,11 @@ export default function CrmPage() {
                     <MdDescription className="text-xl text-brand-200" />
                   </div>
                   <p className="mt-2 text-xs leading-5 text-white/45">
-                    Files are stored in SQLite-backed knowledge records. Upload
+                    Files and images are stored in SQLite-backed knowledge records. Upload
                     multiple files at once; matching filenames automatically
-                    replace older knowledge records. TXT, MD, and CSV extract
-                    immediately; PDF, DOCX, and XLSX use optional extractor
-                    packages when installed.
+                    replace older knowledge records. TXT, MD, CSV, and image
+                    assets index immediately; PDF, DOCX, and XLSX use optional
+                    extractor packages when installed.
                   </p>
 
                   <input
@@ -1137,7 +1137,7 @@ export default function CrmPage() {
                     type="file"
                     multiple
                     className="hidden"
-                    accept=".txt,.md,.markdown,.pdf,.docx,.xlsx,.csv"
+                    accept=".txt,.md,.markdown,.pdf,.docx,.xlsx,.csv,.jpg,.jpeg,.png,.webp,.gif,image/*"
                     onChange={handleFilesSelected}
                   />
                   <button

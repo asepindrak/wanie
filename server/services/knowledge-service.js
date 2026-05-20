@@ -15,6 +15,14 @@ const supportedPlainTextTypes = new Set([
   "application/json",
 ]);
 
+const supportedImageTypes = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
 async function retryOnSqliteTimeout(operation) {
   let lastError = null;
   for (const delayMs of [0, 100, 250, 500]) {
@@ -166,11 +174,27 @@ function readCsvAsText(filePath) {
 }
 
 function tokenize(text) {
-  return String(text || "")
+  const tokens = String(text || "")
     .toLowerCase()
     .split(/[^a-z0-9\u00c0-\u024f]+/i)
     .map((item) => item.trim())
     .filter((item) => item.length >= 3);
+  const expanded = [];
+
+  for (const token of tokens) {
+    expanded.push(token);
+    if (token.endsWith("nya") && token.length > 5) {
+      expanded.push(token.slice(0, -3));
+    }
+    if (token.includes("bayar") || token.includes("payment")) {
+      expanded.push("bayar", "pembayaran", "payment");
+    }
+    if (token.includes("qris") || token === "qr") {
+      expanded.push("qris", "qr");
+    }
+  }
+
+  return expanded.filter((item) => item.length >= 3);
 }
 
 function scoreChunk(queryTerms, content) {
@@ -210,8 +234,124 @@ function shouldPreferCsv(queryTerms) {
   return queryTerms.some((term) => csvIntentTerms.has(term));
 }
 
+function hasPaymentIntent(queryTerms, query) {
+  const text = String(query || "").toLowerCase();
+  return (
+    /\b(qris|qr|bayar|pembayaran|payment|transfer|rekening|metode\s+bayar|metode\s+pembayaran|bayarnya|pembayarannya)\b/i.test(
+      text,
+    ) ||
+    queryTerms.some((term) =>
+      [
+        "qris",
+        "bayar",
+        "pembayaran",
+        "payment",
+        "transfer",
+        "rekening",
+        "bayarnya",
+        "pembayarannya",
+      ].includes(term),
+    )
+  );
+}
+
+function hasPriceIntent(queryTerms, query) {
+  const text = String(query || "").toLowerCase();
+  return (
+    /\b(price|pricelist|harga|tarif|biaya|paket|rate|rates|berapa)\b/i.test(
+      text,
+    ) ||
+    queryTerms.some((term) =>
+      ["price", "pricelist", "harga", "tarif", "biaya", "paket", "rate", "berapa"].includes(term),
+    )
+  );
+}
+
+function imageIntentBoost(queryTerms, query, chunk) {
+  const content = String(chunk?.content || "").toLowerCase();
+  const metadata = chunk?.metadata || {};
+  const mimeType = String(chunk?.document?.mimeType || metadata.mimeType || "").toLowerCase();
+  const isImage =
+    metadata.mediaType === "image" ||
+    mimeType.startsWith("image/") ||
+    content.includes("type: image");
+
+  if (!isImage) return 0;
+
+  if (
+    hasPaymentIntent(queryTerms, query) &&
+    /(payment_qris|qris|qr code|pembayaran|payment|transfer|metode pembayaran)/i.test(
+      content,
+    )
+  ) {
+    return 1.5;
+  }
+
+  if (
+    hasPriceIntent(queryTerms, query) &&
+    /(pricelist|price list|harga|tarif|biaya|paket|rate)/i.test(content)
+  ) {
+    return 1.2;
+  }
+
+  return 0;
+}
+
 function readPlainText(filePath) {
   return fs.readFileSync(filePath, "utf8");
+}
+
+function isImageKnowledgeFile(file) {
+  const mimeType = String(file?.mimetype || file?.mimeType || "").toLowerCase();
+  const ext = path.extname(file?.originalname || file?.filename || "")
+    .toLowerCase()
+    .trim();
+  return (
+    supportedImageTypes.has(mimeType) ||
+    [".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext)
+  );
+}
+
+function buildImageKnowledgeText(file) {
+  const originalName = sanitizeUnicodeText(
+    file.originalname || file.filename || "image",
+  );
+  const baseName = sanitizeUnicodeText(
+    path.basename(originalName, path.extname(originalName)),
+  );
+  const normalizedTitle = baseName.replace(/[-_]+/g, " ").toLowerCase();
+  let assetCategory = "image";
+  let usage =
+    "Use this image as a customer-facing attachment only when the customer asks for this exact visual reference or when the request clearly matches the image title or filename.";
+  let keywords = normalizedTitle;
+
+  if (/\b(qris|qr|payment|pembayaran|bayar|transfer|rekening|bank|ewallet|e-wallet|dana|ovo|gopay|shopeepay)\b/i.test(normalizedTitle)) {
+    assetCategory = "payment_qris";
+    usage =
+      "Use this image only when the customer asks for QRIS, QR code payment, payment method, payment proof target, transfer/payment details, or how to pay. Do not use this image for pricelist, catalog, menu, product list, or service price questions.";
+    keywords = `${normalizedTitle} qris qr code pembayaran bayar payment transfer metode pembayaran`;
+  } else if (/\b(price|pricelist|price list|harga|tarif|biaya|paket|rate|rates)\b/i.test(normalizedTitle)) {
+    assetCategory = "pricelist";
+    usage =
+      "Use this image only when the customer asks for pricelist, prices, tariffs, service fees, package prices, rates, or cost information. Do not use this image for QRIS, payment method, transfer, or payment code questions.";
+    keywords = `${normalizedTitle} pricelist price list harga tarif biaya paket rate`;
+  } else if (/\b(menu|katalog|catalog|catalogue|produk|product|layanan|service|brosur|brochure)\b/i.test(normalizedTitle)) {
+    assetCategory = "catalog";
+    usage =
+      "Use this image only when the customer asks for a menu, catalog, product list, service list, brochure, or visual list that matches this image title. Do not use this image for payment QRIS unless the title clearly says it is payment-related.";
+    keywords = `${normalizedTitle} menu katalog catalog produk layanan brosur brochure`;
+  }
+
+  return normalizeText(
+    [
+      `Image knowledge asset: ${originalName}`,
+      `Title: ${baseName}`,
+      `Type: image`,
+      `Image category: ${assetCategory}`,
+      usage,
+      `Search keywords: ${keywords}`,
+    ].join("\n"),
+  );
 }
 
 function normalizeKnowledgeFileName(value, fallback = "knowledge.md") {
@@ -389,6 +529,29 @@ async function searchChunks(userId, query, options = {}) {
   const canUseVector =
     queryEmbedding && chunks.some((chunk) => embeddingArray(chunk.embedding));
 
+  const intentResults = chunks
+    .map((chunk) => {
+      const boost = imageIntentBoost(queryTerms, query, chunk);
+      if (!boost) return null;
+      return {
+        id: chunk.id,
+        documentId: chunk.documentId,
+        documentTitle: chunk.document.title,
+        fileName: chunk.document.originalName,
+        mimeType: chunk.document.mimeType,
+        metadata: chunk.metadata || null,
+        content: chunk.content,
+        chunkIndex: chunk.chunkIndex,
+        score: boost,
+        searchMode: "image-intent",
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, take);
+
+  if (intentResults.length) return intentResults;
+
   if (canUseVector) {
     const vectorResults = chunks
       .map((chunk) => ({
@@ -396,6 +559,8 @@ async function searchChunks(userId, query, options = {}) {
         documentId: chunk.documentId,
         documentTitle: chunk.document.title,
         fileName: chunk.document.originalName,
+        mimeType: chunk.document.mimeType,
+        metadata: chunk.metadata || null,
         content: chunk.content,
         chunkIndex: chunk.chunkIndex,
         score: embeddingService.cosineSimilarity(
@@ -421,6 +586,8 @@ async function searchChunks(userId, query, options = {}) {
         documentId: chunk.documentId,
         documentTitle: chunk.document.title,
         fileName: chunk.document.originalName,
+        mimeType: chunk.document.mimeType,
+        metadata: chunk.metadata || null,
         content: chunk.content,
         chunkIndex: chunk.chunkIndex,
         score: baseScore + csvBoost,
@@ -438,6 +605,8 @@ async function searchChunks(userId, query, options = {}) {
     documentId: chunk.documentId,
     documentTitle: chunk.document.title,
     fileName: chunk.document.originalName,
+    mimeType: chunk.document.mimeType,
+    metadata: chunk.metadata || null,
     content: chunk.content,
     chunkIndex: chunk.chunkIndex,
     score: 0,
@@ -467,7 +636,10 @@ async function createDocumentFromUpload(userId, file) {
   );
 
   try {
-    const text = normalizeText(await extractText(file));
+    const isImageAsset = isImageKnowledgeFile(file);
+    const text = isImageAsset
+      ? buildImageKnowledgeText(file)
+      : normalizeText(await extractText(file));
     const chunks = chunkText(text);
 
     if (!chunks.length) {
@@ -501,6 +673,11 @@ async function createDocumentFromUpload(userId, file) {
               metadata: {
                 fileName: sanitizeUnicodeText(file.originalname),
                 mimeType: file.mimetype || null,
+                mediaType: isImageAsset ? "image" : undefined,
+                assetCategory: isImageAsset
+                  ? text.match(/Image category:\s*([^\n]+)/i)?.[1] || "image"
+                  : undefined,
+                relativePath: isImageAsset ? relativePath : undefined,
               },
             })),
           }),

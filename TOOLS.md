@@ -35,6 +35,7 @@ Knowledge-base routing:
 - Use `update_assistant` only for the Wanie Assistant chat profile itself, not CRM customer auto-reply behavior.
 - For CRM auto-reply edits, keep changes literal and narrow. Do not invent policies, prices, guarantees, workflows, tone rules, or business facts. Prefer find/replace when changing one phrase in `persona` or `agentInstructions`.
 - Use `list_knowledge_base` when the user asks what CRM knowledge exists.
+- Knowledge base can include image assets such as pricelist, QRIS, menu, catalog, or payment images. Image retrieval works best when the filename/title contains clear keywords, for example `qris-pembayaran.png` or `pricelist-paket-premium.png`.
 - Use `get_knowledge_base_document` when the user asks to show, view, open, display, or lihat the data/content of a knowledge document.
 - Use `test_knowledge_base_reply` when the user asks to check, test, simulate, preview, or kira-kira what the CRM AI reply would be from the knowledge base.
 - If the tested reply is wrong, inspect the returned sources, read the source document, then update only the wrong sentence/section according to the user's correction. Prefer find/replace. Do not rewrite the full document unless the user explicitly asks.

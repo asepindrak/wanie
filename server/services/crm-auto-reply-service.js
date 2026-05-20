@@ -1,12 +1,13 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const chatService = require("./chat-service");
 const crmService = require("./crm-service");
 const knowledgeService = require("./knowledge-service");
 const llmService = require("./llm-service");
 const outboundDeliveryService = require("./outbound-delivery-service");
 const transcriptionService = require("./transcription-service");
-const { mediaDir } = require("../utils/paths");
+const { knowledgeDir, mediaDir } = require("../utils/paths");
 
 const generationRetryDelaysMs = [0, 1000, 2500];
 const autoReplyDebounceMs = 8000;
@@ -231,6 +232,62 @@ function buildPrompt({ chat, messages, snippets, settings }) {
   ].join("\n");
 }
 
+function isImageKnowledgeSource(source) {
+  return (
+    source?.metadata?.mediaType === "image" ||
+    String(source?.mimeType || source?.metadata?.mimeType || "")
+      .toLowerCase()
+      .startsWith("image/")
+  );
+}
+
+function imageKnowledgeSources(sources = []) {
+  const seen = new Set();
+  return sources.filter((source) => {
+    if (!isImageKnowledgeSource(source)) return false;
+    const key = source.documentId || source.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function createMediaFileFromKnowledgeSource(userId, source) {
+  const relativePath = String(source?.metadata?.relativePath || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .trim();
+  if (!relativePath) return null;
+
+  const knowledgeRoot = path.resolve(knowledgeDir);
+  const sourcePath = path.resolve(knowledgeDir, relativePath);
+  if (
+    !sourcePath.startsWith(`${knowledgeRoot}${path.sep}`) ||
+    !fs.existsSync(sourcePath)
+  ) {
+    return null;
+  }
+
+  const ext = path.extname(source.fileName || relativePath) || ".png";
+  const filename = `${crypto.randomUUID()}${ext}`;
+  const targetPath = path.join(mediaDir, filename);
+  if (!fs.existsSync(mediaDir)) {
+    fs.mkdirSync(mediaDir, { recursive: true });
+  }
+  fs.copyFileSync(sourcePath, targetPath);
+  const stat = fs.statSync(targetPath);
+
+  return chatService.createMediaFile(userId, {
+    filename,
+    originalname: source.fileName || path.basename(relativePath),
+    mimetype:
+      source.mimeType ||
+      source.metadata?.mimeType ||
+      "application/octet-stream",
+    size: stat.size,
+  });
+}
+
 async function deliverOutgoingMessageWithRetry({
   userId,
   outgoing,
@@ -389,6 +446,7 @@ async function generateDraft(userId, chatId, { inboundMessage } = {}) {
   return {
     draft: sanitizeCustomerReply(result?.text || settings.fallbackMessage),
     sources: snippets,
+    mediaSources: imageKnowledgeSources(snippets),
   };
 }
 
@@ -450,6 +508,7 @@ async function testKnowledgeChat(userId, question) {
   return {
     answer: String(result?.text || "").trim(),
     sources: snippets,
+    mediaSources: imageKnowledgeSources(snippets),
   };
 }
 
@@ -779,6 +838,36 @@ async function runAutoReply({
     );
   }
 
+  const sentMediaMessages = [];
+  const mediaSources = (result.mediaSources || []).slice(0, 2);
+  for (const source of mediaSources) {
+    const mediaFile = await createMediaFileFromKnowledgeSource(userId, source);
+    if (!mediaFile) continue;
+
+    const mediaOutgoing = await chatService.createOutgoingMessage({
+      userId,
+      chatId: chat.id,
+      body: source.fileName || "",
+      type: "image",
+      mediaFileId: mediaFile.id,
+      skipCrmAutoPause: true,
+    });
+
+    sentMediaMessages.push(mediaOutgoing.message);
+
+    if (io && userRoom) {
+      io.to(userRoom(userId)).emit("new_message", mediaOutgoing.message);
+      io.to(userRoom(userId)).emit("contact_list_update", mediaOutgoing.chat);
+    }
+
+    await deliverOutgoingMessageWithRetry({
+      userId,
+      outgoing: mediaOutgoing,
+      sessionManager,
+      io,
+    });
+  }
+
   await crmService.createAutomationLog(userId, {
     chatId: chat.id,
     mode,
@@ -802,7 +891,13 @@ async function runAutoReply({
     });
   }
 
-  return { ok: true, mode, message: outgoing.message, sources: result.sources };
+  return {
+    ok: true,
+    mode,
+    message: outgoing.message,
+    mediaMessages: sentMediaMessages,
+    sources: result.sources,
+  };
 }
 
 module.exports = {

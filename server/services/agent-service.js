@@ -118,6 +118,7 @@ const defaultRoutingRules = [
   "- Use update_assistant only for the Wanie Assistant chat profile itself, not CRM customer auto-reply behavior.",
   "- For CRM auto-reply edits, keep changes literal and narrow. Do not invent policies, prices, guarantees, workflows, tone rules, or business facts. Prefer find/replace when changing one phrase in persona or agentInstructions.",
   "- If the user asks what CRM knowledge exists, use list_knowledge_base.",
+  "- Knowledge base can include image assets such as pricelist, QRIS, menu, catalog, or payment images. Image retrieval works best when the filename/title contains clear keywords, for example qris-pembayaran.png or pricelist-paket-premium.png.",
   "- If the user asks to show, view, open, display, or lihat data inside a CRM knowledge-base document, use get_knowledge_base_document and include the document content in the reply.",
   "- If the user asks to check, test, simulate, preview, or kira-kira what the CRM AI reply would be from the knowledge base, use test_knowledge_base_reply.",
   "- If a tested knowledge-aware reply is wrong, inspect the returned sources, read the source document with get_knowledge_base_document, then update only the wrong sentence/section with update_knowledge_base according to the user's correction. Prefer find/replace. Do not rewrite the full document unless the user explicitly asks for a full rewrite.",
@@ -1755,6 +1756,7 @@ const tools = {
       question,
       answer: result.answer,
       sources: result.sources || [],
+      mediaSources: result.mediaSources || [],
     };
   },
   add_knowledge_base: async (userId, args = {}) => {
