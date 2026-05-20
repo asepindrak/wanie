@@ -267,6 +267,40 @@ function hasPriceIntent(queryTerms, query) {
   );
 }
 
+function inferImageAssetCategory(chunk) {
+  const metadata = chunk?.metadata || {};
+  if (metadata.assetCategory) {
+    return String(metadata.assetCategory).toLowerCase();
+  }
+
+  const text = [
+    chunk?.document?.originalName,
+    chunk?.document?.title,
+    chunk?.document?.fileName,
+    chunk?.content,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const categoryMatch = text.match(/image category:\s*([a-z0-9_-]+)/i);
+  if (categoryMatch) {
+    return categoryMatch[1].toLowerCase();
+  }
+
+  if (/\b(qris|qr|payment|pembayaran|bayar|transfer|rekening)\b/i.test(text)) {
+    return "payment_qris";
+  }
+  if (/\b(price|pricelist|harga|tarif|biaya|paket|rate)\b/i.test(text)) {
+    return "pricelist";
+  }
+  if (/\b(menu|katalog|catalog|produk|product|layanan|service|brosur|brochure)\b/i.test(text)) {
+    return "catalog";
+  }
+
+  return "image";
+}
+
 function imageIntentBoost(queryTerms, query, chunk) {
   const content = String(chunk?.content || "").toLowerCase();
   const metadata = chunk?.metadata || {};
@@ -278,19 +312,13 @@ function imageIntentBoost(queryTerms, query, chunk) {
 
   if (!isImage) return 0;
 
-  if (
-    hasPaymentIntent(queryTerms, query) &&
-    /(payment_qris|qris|qr code|pembayaran|payment|transfer|metode pembayaran)/i.test(
-      content,
-    )
-  ) {
+  const category = inferImageAssetCategory(chunk);
+
+  if (hasPaymentIntent(queryTerms, query) && category === "payment_qris") {
     return 1.5;
   }
 
-  if (
-    hasPriceIntent(queryTerms, query) &&
-    /(pricelist|price list|harga|tarif|biaya|paket|rate)/i.test(content)
-  ) {
+  if (hasPriceIntent(queryTerms, query) && category === "pricelist") {
     return 1.2;
   }
 
