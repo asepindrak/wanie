@@ -97,14 +97,17 @@ CRM replies are grounded in uploaded knowledge documents. Supported file types i
 - PDF
 - DOCX
 - XLSX
+- Images (`.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`)
 
-CSV files are converted into row/column-labeled text so service data such as `Nama Layanan`, `Harga Dasar`, and `Durasi (mnt)` can be retrieved reliably. Existing documents can be reindexed from the CRM page after parser changes, embedding configuration changes, or updated source files.
+CSV files are converted into row/column-labeled text so service data such as `Service Name`, `Base Price`, and `Duration (min)` can be retrieved reliably. Existing documents can be reindexed from the CRM page after parser changes, embedding configuration changes, or updated source files.
+
+Image files can be used as knowledge assets for customer-facing attachments such as QRIS payment images, pricelists, menus, catalogs, and brochures. Use clear filenames such as `payment-qris.png`, `premium-package-pricelist.jpg`, or `service-menu.webp` so retrieval can match the image to the customer's request.
 
 The CRM knowledge page supports multiple file uploads in one action. If an uploaded file has the same original filename as an existing knowledge document, Wanie automatically replaces the old document and rebuilds its chunks from the new file.
 
 ### Auto-reply behavior
 
-- Wanie waits briefly after the latest inbound message before generating a CRM auto-reply, so rapid messages like `halo`, `harga berapa`, and `bisa order sekarang` are answered as one context.
+- Wanie waits briefly after the latest inbound message before generating a CRM auto-reply, so rapid messages like `hi`, `how much is it`, and `can I order now` are answered as one context.
 - AI generation and outbound delivery are retried a few times for transient provider or network failures.
 - If AI generation still fails, Wanie sends the configured CRM fallback message.
 - Normal follow-up questions are still answered until the daily per-chat reply limit is reached.
@@ -485,6 +488,7 @@ To use Wanie as a gateway/API only, set internal CRM automation mode to **Off**,
 
 - `GET /api/knowledge/documents`
 - `POST /api/knowledge/documents` accepts one `file` field or multiple `files` fields. Matching original filenames replace existing documents automatically.
+- `GET /api/knowledge/documents/{documentId}/download`
 - `DELETE /api/knowledge/documents/{documentId}`
 - `POST /api/knowledge/documents/{documentId}/reindex`
 - `GET /api/knowledge/documents/{documentId}/chunks`
