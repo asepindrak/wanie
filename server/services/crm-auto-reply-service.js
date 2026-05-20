@@ -48,6 +48,142 @@ function isNoInboundTextError(error) {
   return /No inbound customer message found/i.test(String(error?.message || ""));
 }
 
+function normalizeConversationCue(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isClosingOrAcknowledgement(text) {
+  const normalized = normalizeConversationCue(text);
+  if (!normalized) return false;
+
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length > 6) return false;
+
+  const blockingQuestionTerms =
+    /\b(harga|price|biaya|tarif|qris|bayar|payment|alamat|jadwal|booking|order|pesan|berapa|kapan|dimana|di mana|apa|gimana|bagaimana)\b/i;
+
+  return (
+    /^(ok|okay|oke|okey|sip|siap|baik|noted|noted kak|noted ya|thanks|thank you|thx|ty|makasih|terima kasih|trimakasih|thanks kak|makasih kak|oke kak|ok kak|sip kak|siap kak|baik kak|mantap|done|clear|understood|no|nope|nothing|nothing else|no thanks|no thank you|that is all|thats all|all good|tidak|tidak kak|tidak ada|tidak ada kak|tidak ada lagi|tidak ada lagi kak|nggak|ngga|gak|ga|enggak|engga|nggak kak|ngga kak|gak kak|ga kak|enggak kak|engga kak|gak ada|ga ada|nggak ada|ngga ada|enggak ada|engga ada|gak ada kak|ga ada kak|nggak ada kak|ngga ada kak|enggak ada kak|engga ada kak|gak ada lagi|ga ada lagi|nggak ada lagi|ngga ada lagi|enggak ada lagi|engga ada lagi|gak ada lagi kak|ga ada lagi kak|nggak ada lagi kak|ngga ada lagi kak|enggak ada lagi kak|engga ada lagi kak)$/i.test(
+      normalized,
+    ) ||
+    (/^(ok|oke|okay|sip|siap|baik|thanks|makasih|terima kasih)\b/i.test(
+      normalized,
+    ) &&
+      !blockingQuestionTerms.test(normalized)) ||
+    (/^(no|nope|nothing|tidak|nggak|ngga|gak|ga|enggak|engga)\b/i.test(
+      normalized,
+    ) &&
+      !blockingQuestionTerms.test(normalized))
+  );
+}
+
+function buildClosingAcknowledgement(text) {
+  const normalized = normalizeConversationCue(text);
+  if (/\b(thanks|thank you|makasih|terima kasih|trimakasih)\b/i.test(normalized)) {
+    return "Sama-sama kak.";
+  }
+  if (
+    /\b(no|nope|nothing|tidak|nggak|ngga|gak|ga|enggak|engga)\b/i.test(
+      normalized,
+    )
+  ) {
+    return "Baik kak.";
+  }
+  return "Siap kak.";
+}
+
+function parseJsonObject(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1].trim() : raw;
+
+  try {
+    return JSON.parse(candidate);
+  } catch (error) {
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(candidate.slice(start, end + 1));
+      } catch (nestedError) {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+async function classifyConversationState(userId, latestText, messages, settings) {
+  const normalizedLatest = String(latestText || "").trim();
+  if (!normalizedLatest || normalizedLatest.length > 220) {
+    return { state: "question", confidence: 0, reason: "long_or_empty" };
+  }
+
+  const transcript = messages
+    .slice(-6)
+    .map((message) => {
+      const role = message.direction === "outbound" ? "Agent" : "Customer";
+      return `${role}: ${message.crmContent || message.body || "[attachment]"}`;
+    })
+    .join("\n");
+
+  try {
+    const result = await llmService.generate(userId, {
+      temperature: 0,
+      messages: [
+        {
+          role: "user",
+          content: [
+            "Classify the latest customer message in a CRM chat.",
+            "Return only a compact JSON object with this exact shape:",
+            '{"state":"question|closing|thanks|acknowledgement|booking_intent|handoff_request|unclear","confidence":0.0,"reason":"short reason"}',
+            "",
+            "Rules:",
+            "- Use question when the latest customer message asks for information, price, payment, schedule, address, booking, availability, or asks the business to do something.",
+            "- Use closing when the customer declines more help, says there is nothing else, or clearly ends the conversation.",
+            "- Use thanks when the customer only thanks the agent.",
+            "- Use acknowledgement when the customer only acknowledges the previous message without asking for anything else.",
+            "- If ambiguous, use question or unclear, not closing.",
+            "- Do not answer the customer.",
+            "",
+            `Assistant name: ${settings.assistantName || "CRM Assistant"}`,
+            "",
+            "Recent transcript:",
+            transcript,
+            "",
+            `Latest customer message: ${normalizedLatest}`,
+          ].join("\n"),
+        },
+      ],
+    });
+
+    const parsed = parseJsonObject(result?.text);
+    const state = String(parsed?.state || "unclear").toLowerCase();
+    const confidence = Math.max(
+      0,
+      Math.min(Number(parsed?.confidence) || 0, 1),
+    );
+
+    return {
+      state,
+      confidence,
+      reason: String(parsed?.reason || "").slice(0, 200),
+    };
+  } catch (error) {
+    return {
+      state: "question",
+      confidence: 0,
+      reason: `classification_failed: ${error.message}`,
+    };
+  }
+}
+
 function sanitizeCustomerReply(text) {
   return String(text || "")
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi, "$2")
@@ -214,6 +350,7 @@ function buildPrompt({ chat, messages, snippets, settings }) {
     `Persona and brand voice: ${settings.persona || "Ramah, jelas, profesional, dan membantu."}`,
     `Agent behavior and SOP: ${settings.agentInstructions || "Pahami kebutuhan customer, jawab ringkas dan membantu, gunakan knowledge base bila tersedia, dan arahkan ke admin bila informasi tidak cukup."}`,
     "Answer only using the provided knowledge snippets and conversation context.",
+    "If the latest customer message is only an acknowledgement, thanks, or closing phrase such as ok, okay, noted, thanks, sip, siap, or baik, do not introduce prices, product details, payment details, or new knowledge. Reply with a short acknowledgement only.",
     "If the knowledge is insufficient, use the fallback message and do not invent details.",
     "Do not use Markdown formatting in the final reply.",
     "For links, write the plain URL only. Never use Markdown link syntax like [text](https://example.com).",
@@ -245,11 +382,12 @@ function imageKnowledgeSources(sources = []) {
   const seen = new Set();
   return sources.filter((source) => {
     if (!isImageKnowledgeSource(source)) return false;
+    if (source.searchMode !== "image-intent") return false;
     const key = source.documentId || source.id;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  });
+  }).slice(0, 1);
 }
 
 async function createMediaFileFromKnowledgeSource(userId, source) {
@@ -406,6 +544,37 @@ async function generateDraft(userId, chatId, { inboundMessage } = {}) {
 
   if (!String(lastInbound?.crmContent || lastInbound?.body || "").trim()) {
     throw new Error("No inbound customer message found for this chat.");
+  }
+
+  const lastInboundText = String(lastInbound.crmContent || lastInbound.body || "");
+  if (isClosingOrAcknowledgement(lastInboundText)) {
+    return {
+      draft: buildClosingAcknowledgement(lastInboundText),
+      sources: [],
+      mediaSources: [],
+      conversationState: "closing_acknowledgement",
+    };
+  }
+
+  const conversationState = await classifyConversationState(
+    userId,
+    lastInboundText,
+    contextMessagesForPrompt,
+    settings,
+  );
+  if (
+    ["closing", "thanks", "acknowledgement"].includes(
+      conversationState.state,
+    ) &&
+    conversationState.confidence >= 0.72
+  ) {
+    return {
+      draft: buildClosingAcknowledgement(lastInboundText),
+      sources: [],
+      mediaSources: [],
+      conversationState: conversationState.state,
+      conversationStateReason: conversationState.reason,
+    };
   }
 
   const knowledgeQuery =
@@ -789,6 +958,12 @@ async function runAutoReply({
       reason: "empty-draft",
       inboundMessageId: inboundMessage?.id,
       sources: result.sources || [],
+      metadata: result.conversationState
+        ? {
+            conversationState: result.conversationState,
+            conversationStateReason: result.conversationStateReason || null,
+          }
+        : undefined,
     });
     return { skipped: true, mode, reason: "empty-draft" };
   }
@@ -839,7 +1014,7 @@ async function runAutoReply({
   }
 
   const sentMediaMessages = [];
-  const mediaSources = (result.mediaSources || []).slice(0, 2);
+  const mediaSources = (result.mediaSources || []).slice(0, 1);
   for (const source of mediaSources) {
     const mediaFile = await createMediaFileFromKnowledgeSource(userId, source);
     if (!mediaFile) continue;
@@ -876,12 +1051,24 @@ async function runAutoReply({
     outboundMessageId: outgoing.message.id,
     draft: result.draft,
     sources: result.sources || [],
-    metadata: result.fallbackReason
-      ? {
-          fallbackReason: result.fallbackReason,
-          retryAttempts: generationRetryDelaysMs.length,
-        }
-      : undefined,
+    metadata:
+      result.fallbackReason || result.conversationState
+        ? {
+            ...(result.fallbackReason
+              ? {
+                  fallbackReason: result.fallbackReason,
+                  retryAttempts: generationRetryDelaysMs.length,
+                }
+              : {}),
+            ...(result.conversationState
+              ? {
+                  conversationState: result.conversationState,
+                  conversationStateReason:
+                    result.conversationStateReason || null,
+                }
+              : {}),
+          }
+        : undefined,
   });
 
   if (io && userRoom) {

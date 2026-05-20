@@ -301,14 +301,20 @@ function inferImageAssetCategory(chunk) {
   return "image";
 }
 
-function imageIntentBoost(queryTerms, query, chunk) {
-  const content = String(chunk?.content || "").toLowerCase();
+function isImageKnowledgeChunk(chunk) {
   const metadata = chunk?.metadata || {};
-  const mimeType = String(chunk?.document?.mimeType || metadata.mimeType || "").toLowerCase();
-  const isImage =
+  const mimeType = String(chunk?.document?.mimeType || metadata.mimeType || "")
+    .toLowerCase();
+  return (
     metadata.mediaType === "image" ||
     mimeType.startsWith("image/") ||
-    content.includes("type: image");
+    String(chunk?.content || "").toLowerCase().includes("type: image")
+  );
+}
+
+function imageIntentBoost(queryTerms, query, chunk) {
+  const content = String(chunk?.content || "").toLowerCase();
+  const isImage = isImageKnowledgeChunk(chunk);
 
   if (!isImage) return 0;
 
@@ -628,7 +634,10 @@ async function searchChunks(userId, query, options = {}) {
 
   if (keywordResults.length) return keywordResults;
 
-  return chunks.slice(0, take).map((chunk) => ({
+  return chunks
+    .filter((chunk) => !isImageKnowledgeChunk(chunk))
+    .slice(0, take)
+    .map((chunk) => ({
     id: chunk.id,
     documentId: chunk.documentId,
     documentTitle: chunk.document.title,
