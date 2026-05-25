@@ -350,7 +350,7 @@ class SessionManager extends EventEmitter {
         }
 
         if (payload.status === "disconnected" || payload.status === "error") {
-          this.adapters.delete(session.id);
+          await this.teardownAdapter(session.id);
           if (!this.manualDisconnects.has(session.id)) {
             this.scheduleReconnect(session.userId, session.id, payload.status);
           }

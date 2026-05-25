@@ -14,6 +14,17 @@ const {
 const { prisma } = require("../../database/client");
 const chatService = require("../../services/chat-service");
 
+function envNumber(name, fallback) {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function envFlag(name, fallback = false) {
+  const value = process.env[name];
+  if (value === undefined) return fallback;
+  return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
+}
+
 function resolveStoredMediaPath(relativePath) {
   const normalized = String(relativePath || "")
     .replace(/\\/g, "/")
@@ -180,6 +191,11 @@ class WwebjsAdapter extends EventEmitter {
     this.session = session;
     this.client = null;
     this.inboundMessageIds = new Set();
+    this.healthProbeIntervalMs = envNumber(
+      "WHATSAPP_HEALTH_PROBE_INTERVAL_MS",
+      120000,
+    );
+    this.lastHealthProbeAt = 0;
   }
 
   async resolveProfilePic(externalId) {
@@ -327,7 +343,14 @@ class WwebjsAdapter extends EventEmitter {
         // Increase protocolTimeout to avoid Runtime.callFunctionOn timed out errors
         // when WhatsApp/puppeteer operations take longer on slow machines.
         protocolTimeout: 300000,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-background-timer-throttling",
+          "--disable-backgrounding-occluded-windows",
+          "--disable-renderer-backgrounding",
+        ],
         timeout: 0,
       },
     });
@@ -432,6 +455,28 @@ class WwebjsAdapter extends EventEmitter {
     this.emit("status", { status: "disconnected", transportType: "wwebjs" });
   }
 
+  async runHealthProbe() {
+    if (!this.client) return;
+
+    const now = Date.now();
+    if (now - this.lastHealthProbeAt < this.healthProbeIntervalMs) {
+      return;
+    }
+    this.lastHealthProbeAt = now;
+
+    if (typeof this.client.sendPresenceAvailable === "function") {
+      await this.client.sendPresenceAvailable();
+      return;
+    }
+
+    if (
+      this.client.pupPage &&
+      typeof this.client.pupPage.evaluate === "function"
+    ) {
+      await this.client.pupPage.evaluate(() => Boolean(window?.Store));
+    }
+  }
+
   async healthCheck() {
     if (!this.client) {
       return {
@@ -447,10 +492,25 @@ class WwebjsAdapter extends EventEmitter {
         : null;
     const normalizedState = String(state || "").toUpperCase();
     const hasIdentity = Boolean(this.client.info?.wid?._serialized);
+
+    if (envFlag("WHATSAPP_STRICT_CONNECTED_HEALTH", true)) {
+      if (normalizedState !== "CONNECTED") {
+        return {
+          ok: false,
+          state:
+            normalizedState || (hasIdentity ? "READY_WITHOUT_STATE" : "UNKNOWN"),
+          transportType: "wwebjs",
+          phoneNumber: this.client.info?.wid?.user || null,
+        };
+      }
+    }
+
+    await this.runHealthProbe();
+
     const ok =
       normalizedState === "CONNECTED" ||
-      normalizedState === "OPENING" ||
-      (hasIdentity && !["UNPAIRED", "UNLAUNCHED", "CONFLICT"].includes(normalizedState));
+      (!envFlag("WHATSAPP_STRICT_CONNECTED_HEALTH", true) &&
+        normalizedState === "OPENING");
 
     return {
       ok,
