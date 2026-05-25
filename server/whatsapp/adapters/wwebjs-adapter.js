@@ -25,6 +25,24 @@ function envFlag(name, fallback = false) {
   return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function resolveStoredMediaPath(relativePath) {
   const normalized = String(relativePath || "")
     .replace(/\\/g, "/")
@@ -195,6 +213,12 @@ class WwebjsAdapter extends EventEmitter {
       "WHATSAPP_HEALTH_PROBE_INTERVAL_MS",
       120000,
     );
+    this.syncSettleDelayMs = envNumber("WHATSAPP_SYNC_SETTLE_DELAY_MS", 3000);
+    this.syncCallTimeoutMs = envNumber("WHATSAPP_SYNC_CALL_TIMEOUT_MS", 8000);
+    this.syncContactLimit = envNumber("WHATSAPP_SYNC_CONTACT_LIMIT", 50);
+    this.syncChatLimit = envNumber("WHATSAPP_SYNC_CHAT_LIMIT", 20);
+    this.syncMessagesPerChat = envNumber("WHATSAPP_SYNC_MESSAGES_PER_CHAT", 10);
+    this.syncProfilePhotos = envFlag("WHATSAPP_SYNC_PROFILE_PHOTOS", false);
     this.lastHealthProbeAt = 0;
   }
 
@@ -525,9 +549,9 @@ class WwebjsAdapter extends EventEmitter {
       throw new Error("WhatsApp client is not ready.");
     }
 
-    // Wait for the client to be fully ready and for internal data to settle
-    // whatsapp-web.js sometimes fires 'ready' but data isn't fully accessible
-    await new Promise((resolve) => setTimeout(resolve, 10000));
+    // whatsapp-web.js can fire "ready" before the store is fully populated.
+    // Keep this bounded because workspace sync must never block the UI forever.
+    await sleep(this.syncSettleDelayMs);
 
     let contacts = [];
     let chats = [];
@@ -541,8 +565,16 @@ class WwebjsAdapter extends EventEmitter {
         );
 
         // Use official API methods
-        contacts = await this.client.getContacts();
-        chats = await this.client.getChats();
+        contacts = await withTimeout(
+          this.client.getContacts(),
+          this.syncCallTimeoutMs,
+          `WhatsApp getContacts timed out after ${this.syncCallTimeoutMs}ms.`,
+        );
+        chats = await withTimeout(
+          this.client.getChats(),
+          this.syncCallTimeoutMs,
+          `WhatsApp getChats timed out after ${this.syncCallTimeoutMs}ms.`,
+        );
 
         if (chats && chats.length > 0) {
           console.log(
@@ -567,7 +599,7 @@ class WwebjsAdapter extends EventEmitter {
         console.warn(
           `[WwebjsAdapter] Sync attempt ${retryCount} failed: ${message}. Retrying in 5s...`,
         );
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        await sleep(5000);
       }
     }
 
@@ -575,18 +607,23 @@ class WwebjsAdapter extends EventEmitter {
     // Sort by timestamp if possible, or just take the first N
     const recentChats = chats
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-      .slice(0, 40);
+      .slice(0, this.syncChatLimit);
 
     const contactSnapshots = await Promise.all(
-      contacts.slice(0, 100).map(async (contact) => {
+      contacts.slice(0, this.syncContactLimit).map(async (contact) => {
         const externalId = contact.id?._serialized || "";
-        // Only fetch profile pic for some contacts to save time
         let avatarUrl = null;
-        try {
-          const avatarResult = await this.resolveProfilePic(externalId);
-          avatarUrl = avatarResult.url;
-        } catch (e) {
-          // ignore
+        if (this.syncProfilePhotos) {
+          try {
+            const avatarResult = await withTimeout(
+              this.resolveProfilePic(externalId),
+              this.syncCallTimeoutMs,
+              `WhatsApp profile photo lookup timed out for ${externalId}.`,
+            );
+            avatarUrl = avatarResult.url;
+          } catch (e) {
+            // Avatar sync is best-effort and should not slow down workspace load.
+          }
         }
 
         return {
@@ -626,7 +663,11 @@ class WwebjsAdapter extends EventEmitter {
       try {
         let messages = [];
         try {
-          messages = await chat.fetchMessages({ limit: 20 });
+          messages = await withTimeout(
+            chat.fetchMessages({ limit: this.syncMessagesPerChat }),
+            this.syncCallTimeoutMs,
+            `WhatsApp fetchMessages timed out for ${externalId}.`,
+          );
         } catch (err) {
           console.warn(
             `[WwebjsAdapter] Failed to fetch messages for ${externalId}:`,
@@ -640,7 +681,7 @@ class WwebjsAdapter extends EventEmitter {
               status: "found",
               reason: "reused-contact-avatar",
             }
-          : await this.resolveProfilePic(externalId);
+          : { url: null, status: "skipped", reason: "workspace-sync-fast-path" };
 
         chatSnapshots.push({
           externalId,

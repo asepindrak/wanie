@@ -55,6 +55,10 @@ class SessionManager extends EventEmitter {
     this.resetInProgress = false;
     this.healthIntervalMs = envNumber("WHATSAPP_HEALTH_INTERVAL_MS", 30000);
     this.healthTimeoutMs = envNumber("WHATSAPP_HEALTH_TIMEOUT_MS", 10000);
+    this.workspaceSyncTimeoutMs = envNumber(
+      "WHATSAPP_WORKSPACE_SYNC_TIMEOUT_MS",
+      60000,
+    );
     this.reconnectBaseDelayMs = envNumber(
       "WHATSAPP_RECONNECT_BASE_DELAY_MS",
       5000,
@@ -304,7 +308,11 @@ class SessionManager extends EventEmitter {
               status: "syncing",
             });
 
-            const snapshot = await adapter.getSyncSnapshot();
+            const snapshot = await withTimeout(
+              adapter.getSyncSnapshot(),
+              this.workspaceSyncTimeoutMs,
+              `WhatsApp workspace sync timed out after ${this.workspaceSyncTimeoutMs}ms.`,
+            );
             await chatService.syncWhatsappSnapshot({
               userId: session.userId,
               sessionId: session.id,
