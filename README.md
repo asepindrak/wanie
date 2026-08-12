@@ -1,3 +1,5 @@
+
+
 <p align="center">
   <img src="./logo-long.png" alt="Wanie" width="320" />
 </p>
@@ -153,8 +155,7 @@ If you are working on this repository locally instead of using the published CLI
 
 ```bash
 npm install
-npm run build
-npm start
+npm run dev
 ```
 
 ## Run with Docker Compose
