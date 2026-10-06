@@ -43,8 +43,14 @@ const sessionsDir = path.join(storageDir, "sessions");
 const mediaDir = path.join(storageDir, "media");
 const knowledgeDir = path.join(storageDir, "knowledge");
 const databaseDir = path.join(storageDir, "database");
+const databasePath = path.join(databaseDir, "openwa.db");
 const prismaSchemaPath = path.join(rootDir, "prisma", "schema.prisma");
 const webDir = path.join(rootDir, "web");
+
+function getSqliteUrl(filePath) {
+  const normalized = String(filePath || "").replace(/\\/g, "/");
+  return `file:${normalized}`;
+}
 
 function ensureDir(dirPath) {
   try {
@@ -83,6 +89,19 @@ function migrateLegacyStorage() {
         console.info(
           `copied legacy storage from ${legacyStorageDir} to ${storageDir}`,
         );
+      }
+    }
+
+    // Migrate database file if legacy storage has it but storageDir does not
+    const legacyDbPath = path.join(legacyStorageDir, "database", "openwa.db");
+    const targetDbPath = path.join(storageDir, "database", "openwa.db");
+    if (fs.existsSync(legacyDbPath) && !fs.existsSync(targetDbPath)) {
+      try {
+        ensureDir(path.dirname(targetDbPath));
+        fs.copyFileSync(legacyDbPath, targetDbPath);
+        console.info(`migrated database from ${legacyDbPath} to ${targetDbPath}`);
+      } catch (dbErr) {
+        // ignore
       }
     }
 
@@ -170,6 +189,11 @@ function ensureRuntimeDirs() {
   [storageDir, sessionsDir, mediaDir, knowledgeDir, databaseDir, workspacesDir].forEach(
     ensureDir,
   );
+
+  // Also ensure rootDir storage and database directories exist so fallback relative paths
+  // never fail with SQLite Error 14
+  ensureDir(path.join(rootDir, "storage"));
+  ensureDir(path.join(rootDir, "storage", "database"));
 }
 
 module.exports = {
@@ -179,6 +203,8 @@ module.exports = {
   mediaDir,
   knowledgeDir,
   databaseDir,
+  databasePath,
+  getSqliteUrl,
   workspacesDir,
   prismaSchemaPath,
   webDir,

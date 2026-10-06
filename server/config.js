@@ -1,7 +1,10 @@
 const path = require("path");
 const dotenv = require("dotenv");
-const { rootDir } = require("./utils/paths");
+const { rootDir, storageDir } = require("./utils/paths");
 
+if (storageDir) {
+  dotenv.config({ path: path.join(storageDir, ".env") });
+}
 dotenv.config({ path: path.join(rootDir, ".env") });
 
 function getConfig({ dev = false } = {}) {

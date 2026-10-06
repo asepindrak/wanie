@@ -113,17 +113,19 @@ async function ensureJwtSecret() {
     return;
   }
 
-  const envPath = path.join(rootDir, ".env");
-  let envContents = "";
-  let parsed = {};
+  const userEnvPath = path.join(storageDir, ".env");
+  const projectEnvPath = path.join(rootDir, ".env");
 
-  if (fs.existsSync(envPath)) {
-    envContents = fs.readFileSync(envPath, "utf8");
+  let parsed = {};
+  if (fs.existsSync(userEnvPath)) {
     try {
-      parsed = dotenv.parse(envContents);
-    } catch (err) {
-      parsed = {};
-    }
+      Object.assign(parsed, dotenv.parse(fs.readFileSync(userEnvPath, "utf8")));
+    } catch (err) {}
+  }
+  if (fs.existsSync(projectEnvPath)) {
+    try {
+      Object.assign(parsed, dotenv.parse(fs.readFileSync(projectEnvPath, "utf8")));
+    } catch (err) {}
   }
 
   const existingSecret = parsed.WANIE_JWT_SECRET || parsed.OPENWA_JWT_SECRET;
@@ -142,11 +144,23 @@ async function ensureJwtSecret() {
     process.exit(1);
   }
 
+  const isGlobalInstall = rootDir.includes("node_modules");
+  const envPath =
+    !isGlobalInstall && fs.existsSync(projectEnvPath)
+      ? projectEnvPath
+      : userEnvPath;
+
+  let envContents = "";
+  if (fs.existsSync(envPath)) {
+    envContents = fs.readFileSync(envPath, "utf8");
+  }
+
   let newContents = envContents.trimEnd();
   if (newContents.length > 0 && !newContents.endsWith("\n")) {
     newContents += "\n";
   }
   newContents += `WANIE_JWT_SECRET=${secret}\n`;
+  ensureRuntimeDirs();
   fs.writeFileSync(envPath, newContents, { encoding: "utf8", mode: 0o600 });
   process.env.WANIE_JWT_SECRET = secret;
   console.log(`[Wanie] Saved WANIE_JWT_SECRET to ${envPath}`);
