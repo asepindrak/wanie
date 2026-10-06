@@ -60,6 +60,50 @@ function resolveStoredMediaPath(relativePath) {
   return path.join(mediaDir, withoutMediaPrefix);
 }
 
+function resolveBrowserExecutable() {
+  if (
+    process.env.PUPPETEER_EXECUTABLE_PATH &&
+    fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)
+  ) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  if (process.platform === "win32") {
+    const candidates = [
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      path.join(
+        os.homedir(),
+        "AppData\\Local\\Google\\Chrome\\Application\\chrome.exe",
+      ),
+      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+  } else if (process.platform === "darwin") {
+    const candidates = [
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+  } else {
+    const candidates = [
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+  }
+  return null;
+}
+
 function isChromiumProfileLockError(error) {
   const message = String(error?.message || error || "").toLowerCase();
   return (
@@ -357,26 +401,32 @@ class WwebjsAdapter extends EventEmitter {
       ensureRuntimeDirs();
     } catch (e) {}
 
+    const executablePath = resolveBrowserExecutable();
+    const puppeteerOptions = {
+      headless: true,
+      // Increase protocolTimeout to avoid Runtime.callFunctionOn timed out errors
+      // when WhatsApp/puppeteer operations take longer on slow machines.
+      protocolTimeout: 300000,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+      ],
+      timeout: 0,
+    };
+    if (executablePath) {
+      puppeteerOptions.executablePath = executablePath;
+    }
+
     this.client = new Client({
       authStrategy: new LocalAuth({
         clientId: this.session.id,
         dataPath: sessionsDir,
       }),
-      puppeteer: {
-        headless: true,
-        // Increase protocolTimeout to avoid Runtime.callFunctionOn timed out errors
-        // when WhatsApp/puppeteer operations take longer on slow machines.
-        protocolTimeout: 300000,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-background-timer-throttling",
-          "--disable-backgrounding-occluded-windows",
-          "--disable-renderer-backgrounding",
-        ],
-        timeout: 0,
-      },
+      puppeteer: puppeteerOptions,
     });
 
     this.client.on("qr", async (qr) => {

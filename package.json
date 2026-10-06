@@ -1,6 +1,6 @@
 {
   "name": "@adens/wanie",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "Wanie is an AI messaging CRM for WhatsApp, Telegram, and external apps.",
   "license": "MIT",
   "author": "asepindrak <asepindrakurniawan@gmail.com>",
@@ -92,6 +92,9 @@
     "nodemon": "^3.1.14",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17"
+  },
+  "puppeteer": {
+    "skipDownload": true
   },
   "publishConfig": {
     "access": "public"
